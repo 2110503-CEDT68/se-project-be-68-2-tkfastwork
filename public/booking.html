@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Booking Details – CoWork</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: '#384795', dark: '#2d3a7a', light: '#eef0fa' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col items-center justify-center p-5 font-sans">
+  <div class="bg-white rounded-xl shadow-lg w-full max-w-[420px] overflow-hidden" id="card">
+    <div class="p-10 text-center text-gray-400 text-sm">Loading booking details...</div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+
+    async function load() {
+      const card = document.getElementById('card');
+      if (!id) {
+        card.innerHTML = `
+          <div class="bg-primary px-6 pt-7 pb-6 text-center text-white">
+            <div class="text-[0.7rem] font-bold uppercase tracking-widest text-white/65 mb-2">CoWork</div>
+            <h1 class="text-[1.2rem] font-bold">Invalid QR Code</h1>
+            <p class="text-sm text-white/70 mt-1">No booking ID was provided.</p>
+          </div>
+          <div class="p-6 text-center text-sm text-gray-500">Please scan a valid booking QR code.</div>
+        `;
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/v1/reservations/public/${id}`);
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          card.innerHTML = `
+            <div class="bg-red-600 px-6 pt-7 pb-6 text-center text-white">
+              <div class="text-[0.7rem] font-bold uppercase tracking-widest text-white/65 mb-2">CoWork</div>
+              <h1 class="text-[1.2rem] font-bold">Booking Not Found</h1>
+              <p class="text-sm text-white/70 mt-1">This QR code may be invalid or the booking was cancelled.</p>
+            </div>
+            <div class="p-6 text-center text-sm text-gray-500">Please contact the front desk for assistance.</div>
+          `;
+          return;
+        }
+
+        const d = json.data;
+        const space = d.coworkingSpace;
+        const user = d.user;
+
+        const dateStr = new Date(d.apptDate).toLocaleDateString('en-GB', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Bangkok'
+        });
+        const startTime = new Date(d.apptDate).toLocaleTimeString('en-GB', {
+          hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok'
+        });
+        const endTime = d.apptEnd ? new Date(d.apptEnd).toLocaleTimeString('en-GB', {
+          hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok'
+        }) : null;
+
+        const row = (label, value) => `
+          <div class="mb-3.5">
+            <div class="text-xs text-gray-400 mb-0.5">${label}</div>
+            <div class="text-[0.9rem] font-semibold text-gray-900">${value}</div>
+          </div>
+        `;
+
+        card.innerHTML = `
+          <div class="bg-primary px-6 pt-7 pb-6 text-center text-white">
+            <div class="text-[0.7rem] font-bold uppercase tracking-widest text-white/65 mb-2">CoWork</div>
+            <h1 class="text-[1.2rem] font-bold">${space.name}</h1>
+            <p class="text-sm text-white/70 mt-1">${space.address}</p>
+            <span class="inline-block mt-3 bg-white/18 text-white text-xs font-bold px-3.5 py-1 rounded-full border border-white/25 tracking-wide">Confirmed</span>
+          </div>
+          <div class="p-6">
+            <div class="text-[0.68rem] font-bold uppercase tracking-wider text-gray-400 mb-3.5">Appointment</div>
+            ${row('Date', dateStr)}
+            ${row('Time', startTime + (endTime ? ' – ' + endTime : ''))}
+            ${row('Space Hours', space.opentime + ' – ' + space.closetime)}
+            <hr class="border-gray-100 my-5" />
+            <div class="text-[0.68rem] font-bold uppercase tracking-wider text-gray-400 mb-3.5">Guest</div>
+            ${row('Name', user.name)}
+            ${row('Tel', user.tel)}
+            <hr class="border-gray-100 my-5" />
+            <div class="text-[0.68rem] font-bold uppercase tracking-wider text-gray-400 mb-2">Booking ID</div>
+            <div class="bg-slate-50 border border-gray-200 rounded px-3.5 py-2.5 font-mono text-xs text-gray-500 break-all">${d._id}</div>
+          </div>
+        `;
+      } catch (e) {
+        document.getElementById('card').innerHTML = `
+          <div class="bg-red-600 px-6 pt-7 pb-6 text-center text-white">
+            <div class="text-[0.7rem] font-bold uppercase tracking-widest text-white/65 mb-2">CoWork</div>
+            <h1 class="text-[1.2rem] font-bold">Connection Error</h1>
+            <p class="text-sm text-white/70 mt-1">Could not reach the server.</p>
+          </div>
+          <div class="p-6 text-center text-sm text-gray-500">Please check your connection and try again.</div>
+        `;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

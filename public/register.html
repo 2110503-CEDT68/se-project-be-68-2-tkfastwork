@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register – CoWork</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: '#384795', dark: '#2d3a7a', light: '#eef0fa', light2: '#d4d9f0' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .spinner { display:inline-block; width:15px; height:15px; border:2px solid rgba(255,255,255,0.3); border-top-color:currentColor; border-radius:50%; animation:spin .6s linear infinite; flex-shrink:0; }
+  </style>
+</head>
+<body class="bg-slate-50 text-gray-900 min-h-screen flex items-center justify-center p-6">
+
+<div class="bg-white border border-gray-200 rounded-xl shadow-md w-full max-w-[420px] p-8 sm:p-9">
+  <a href="index.html" class="text-primary font-bold text-base no-underline hover:opacity-80 inline-block mb-7">CoWork</a>
+  <h1 class="text-[1.4rem] font-extrabold text-gray-900 tracking-tight mb-1">Create Account</h1>
+  <p class="text-sm text-gray-500 mb-7">Join CoWork to start booking spaces</p>
+
+  <div id="registerAlert"></div>
+
+  <form id="registerForm" class="flex flex-col gap-4">
+    <div class="flex flex-col gap-1.5">
+      <label class="text-[0.82rem] font-semibold text-gray-900" for="regName">Full Name</label>
+      <input type="text" id="regName" class="w-full px-3.5 py-2.5 border border-gray-200 rounded text-sm text-gray-900 bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 placeholder:text-gray-400" placeholder="Your full name" required autocomplete="name" />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <label class="text-[0.82rem] font-semibold text-gray-900" for="regTel">Telephone</label>
+      <input type="tel" id="regTel" class="w-full px-3.5 py-2.5 border border-gray-200 rounded text-sm text-gray-900 bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 placeholder:text-gray-400" placeholder="e.g. 0812345678" autocomplete="tel" />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <label class="text-[0.82rem] font-semibold text-gray-900" for="regEmail">Email</label>
+      <input type="email" id="regEmail" class="w-full px-3.5 py-2.5 border border-gray-200 rounded text-sm text-gray-900 bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 placeholder:text-gray-400" placeholder="you@example.com" required autocomplete="email" />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <label class="text-[0.82rem] font-semibold text-gray-900" for="regPassword">Password</label>
+      <input type="password" id="regPassword" class="w-full px-3.5 py-2.5 border border-gray-200 rounded text-sm text-gray-900 bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 placeholder:text-gray-400" placeholder="At least 6 characters" required autocomplete="new-password" />
+    </div>
+    <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white font-semibold py-3 rounded text-base transition-colors disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 mt-1" id="registerBtn">
+      Create Account
+    </button>
+  </form>
+
+  <hr class="border-gray-200 my-6" />
+  <p class="text-center text-sm text-gray-500">
+    Already have an account? <a href="index.html" class="text-primary hover:underline">Sign in</a>
+  </p>
+</div>
+
+<script>
+  const API = '/api/v1';
+
+  const api = (path, opts = {}) => fetch(API + path, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(localStorage.getItem('token') ? { Authorization: 'Bearer ' + localStorage.getItem('token') } : {})
+    },
+    ...opts
+  });
+
+  if (localStorage.getItem('token')) window.location.href = 'index.html';
+
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const alertEl = document.getElementById('registerAlert');
+    const btn = document.getElementById('registerBtn');
+    alertEl.innerHTML = '';
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Creating account...';
+
+    const name = document.getElementById('regName').value.trim();
+    const tel = document.getElementById('regTel').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const password = document.getElementById('regPassword').value;
+
+    if (password.length < 6) {
+      alertEl.innerHTML = '<div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded text-sm font-medium mb-2">Password must be at least 6 characters.</div>';
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+      return;
+    }
+
+    try {
+      const body = { name, email, password };
+      if (tel) body.tel = tel;
+      const res = await api('/auth/register', { method: 'POST', body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Registration failed');
+      localStorage.setItem('token', data.token);
+      alertEl.innerHTML = '<div class="bg-green-50 text-green-700 border border-green-200 px-4 py-3 rounded text-sm font-medium mb-2">Account created. Redirecting...</div>';
+      setTimeout(() => { window.location.href = 'index.html'; }, 800);
+    } catch (err) {
+      alertEl.innerHTML = `<div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded text-sm font-medium mb-2">${err.message}</div>`;
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+    }
+  });
+</script>
+</body>
+</html>

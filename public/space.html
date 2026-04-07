@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Space Detail – CoWork</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: '#384795', dark: '#2d3a7a', light: '#eef0fa', light2: '#d4d9f0' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    .skeleton { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:6px; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .spinner { display:inline-block; width:15px; height:15px; border:2px solid rgba(255,255,255,0.3); border-top-color:currentColor; border-radius:50%; animation:spin .6s linear infinite; flex-shrink:0; }
+  </style>
+</head>
+<body class="bg-slate-50 text-gray-900 min-h-screen">
+
+<nav class="bg-primary sticky top-0 z-50 shadow-md">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 h-[60px] flex items-center gap-4">
+    <a href="index.html" class="text-white font-bold text-lg shrink-0 no-underline hover:opacity-90">CoWork</a>
+    <div class="hidden md:flex items-center gap-0.5 flex-1">
+      <a href="index.html" class="text-white/70 hover:text-white hover:bg-white/10 text-sm font-medium px-3 py-1.5 rounded no-underline transition-colors">Browse</a>
+      <a href="bookings.html" class="text-white/70 hover:text-white hover:bg-white/10 text-sm font-medium px-3 py-1.5 rounded no-underline transition-colors">My Bookings</a>
+      <a href="recommend.html" class="text-white/70 hover:text-white hover:bg-white/10 text-sm font-medium px-3 py-1.5 rounded no-underline transition-colors">AI Suggest</a>
+    </div>
+    <div class="hidden md:flex items-center gap-2 ml-auto shrink-0" id="navAuth"></div>
+    <button class="md:hidden ml-auto flex flex-col justify-center gap-[5px] p-1.5 rounded hover:bg-white/10" id="menuToggle" aria-label="Open menu">
+      <span class="block w-[22px] h-0.5 bg-white rounded"></span>
+      <span class="block w-[22px] h-0.5 bg-white rounded"></span>
+      <span class="block w-[22px] h-0.5 bg-white rounded"></span>
+    </button>
+  </div>
+  <div class="hidden md:!hidden" id="mobileMenu">
+    <div class="bg-primary-dark flex flex-col gap-1 px-4 pt-2 pb-4">
+      <a href="index.html" class="text-white/85 hover:bg-white/10 hover:text-white px-3 py-2.5 rounded text-sm font-medium no-underline transition-colors">Browse</a>
+      <a href="bookings.html" class="text-white/85 hover:bg-white/10 hover:text-white px-3 py-2.5 rounded text-sm font-medium no-underline transition-colors">My Bookings</a>
+      <a href="recommend.html" class="text-white/85 hover:bg-white/10 hover:text-white px-3 py-2.5 rounded text-sm font-medium no-underline transition-colors">✨ AI Suggest</a>
+      <div class="flex flex-wrap gap-2 pt-2 px-3" id="mobileAuth"></div>
+    </div>
+  </div>
+</nav>
+
+<!-- Sub-header breadcrumb -->
+<div class="bg-white border-b border-gray-200 px-4 sm:px-6 py-3.5">
+  <div class="max-w-5xl mx-auto flex items-center gap-3">
+    <a href="index.html" class="inline-flex items-center gap-1 text-gray-500 hover:text-primary text-sm font-medium no-underline transition-colors">&larr; Back</a>
+    <span class="text-gray-200 text-lg">|</span>
+    <span class="font-bold text-gray-900 text-sm" id="headerTitle">Loading...</span>
+  </div>
+</div>
+
+<div class="max-w-[680px] mx-auto px-4 sm:px-6 py-8 flex flex-col gap-5" id="pageContent">
+  <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+    <div class="skeleton h-[18px] w-1/2 mb-5"></div>
+    <div class="skeleton h-3 w-[90%] mb-2"></div>
+    <div class="skeleton h-3 w-[70%] mb-2"></div>
+    <div class="skeleton h-3 w-[55%]"></div>
+  </div>
+</div>
+
+<script>
+  const API = '/api/v1';
+  const BANGKOK_TIMEZONE = 'Asia/Bangkok';
+
+  const api = (path, opts = {}) => fetch(API + path, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(localStorage.getItem('token') ? { Authorization: 'Bearer ' + localStorage.getItem('token') } : {})
+    },
+    ...opts
+  });
+
+  function isLoggedIn() { return !!localStorage.getItem('token'); }
+
+  function getUserName() {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return null;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.name || payload.email || 'User';
+    } catch { return 'User'; }
+  }
+
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function parseTimeToMinutes(timeStr) {
+    const [hourStr, minuteStr] = String(timeStr || '').split(':');
+    const hour = Number(hourStr); const minute = Number(minuteStr);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return (hour * 60) + minute;
+  }
+
+  function toHHMM(totalMinutes) {
+    return `${String(Math.floor(totalMinutes / 60)).padStart(2,'0')}:${String(totalMinutes % 60).padStart(2,'0')}`;
+  }
+
+  function buildHourlySlots(openTime, closeTime) {
+    const openMinutes = parseTimeToMinutes(openTime);
+    const closeMinutes = parseTimeToMinutes(closeTime);
+    if (openMinutes === null || closeMinutes === null || openMinutes > closeMinutes) return [];
+    const slots = [];
+    for (let m = Math.ceil(openMinutes / 60) * 60; m <= Math.floor(closeMinutes / 60) * 60; m += 60) {
+      slots.push(toHHMM(m));
+    }
+    return slots;
+  }
+
+  function populateEndSlots(allSlots, selectedStart) {
+    const endSelect = document.getElementById('apptEndSlot');
+    const startMinutes = parseTimeToMinutes(selectedStart);
+    const endSlots = allSlots.filter(slot => {
+      const m = parseTimeToMinutes(slot);
+      return m !== null && startMinutes !== null && m > startMinutes;
+    });
+    endSelect.innerHTML = ['<option value="">Select end time</option>',
+      ...endSlots.map(slot => `<option value="${slot}">${slot}</option>`)].join('');
+    endSelect.disabled = endSlots.length === 0;
+  }
+
+  function getBangkokDateParts(date) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: BANGKOK_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(date);
+    return {
+      year: Number(parts.find(p => p.type === 'year')?.value),
+      month: Number(parts.find(p => p.type === 'month')?.value),
+      day: Number(parts.find(p => p.type === 'day')?.value)
+    };
+  }
+
+  function getBangkokTodayDateValue() {
+    const { year, month, day } = getBangkokDateParts(new Date());
+    return `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  }
+
+  function bangkokDateTimeToISO(dateStr, timeStr) {
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+    const timeMatch = /^(\d{2}):(\d{2})$/.exec(String(timeStr || ''));
+    if (!dateMatch || !timeMatch) return null;
+    const year = Number(dateMatch[1]), month = Number(dateMatch[2]), day = Number(dateMatch[3]);
+    const hour = Number(timeMatch[1]), minute = Number(timeMatch[2]);
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    const utcMillis = Date.UTC(year, month - 1, day, hour - 7, minute, 0, 0);
+    const iso = new Date(utcMillis).toISOString();
+    return Number.isNaN(new Date(iso).getTime()) ? null : iso;
+  }
+
+  if (!isLoggedIn()) window.location.href = 'index.html';
+
+  const params = new URLSearchParams(window.location.search);
+  const spaceId = params.get('id');
+  if (!spaceId) window.location.href = 'index.html';
+
+  const menuToggle = document.getElementById('menuToggle');
+  const mobileMenu = document.getElementById('mobileMenu');
+  menuToggle.addEventListener('click', () => { mobileMenu.classList.toggle('hidden'); });
+  document.addEventListener('click', (e) => { if (!e.target.closest('nav')) mobileMenu.classList.add('hidden'); });
+
+  function renderNav() {
+    const navAuth = document.getElementById('navAuth');
+    const mobileAuth = document.getElementById('mobileAuth');
+    const ghostBtn = 'text-white/75 border border-white/30 hover:bg-white/10 hover:text-white font-semibold px-3 py-1.5 rounded text-sm transition-colors cursor-pointer bg-transparent';
+    if (isLoggedIn()) {
+      navAuth.innerHTML = `
+        <span class="text-sm text-white/70 font-medium">Hi, ${getUserName()}</span>
+        <button class="${ghostBtn}" id="logoutBtn">Sign Out</button>
+      `;
+      mobileAuth.innerHTML = `
+        <span class="text-white/70 text-sm self-center">Hi, ${getUserName()}</span>
+        <button class="${ghostBtn}" id="mobileLogoutBtn">Sign Out</button>
+      `;
+      document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('token'); window.location.href = 'index.html'; });
+      document.getElementById('mobileLogoutBtn').addEventListener('click', () => { localStorage.removeItem('token'); window.location.href = 'index.html'; });
+    }
+  }
+
+  renderNav();
+  let spaceData = null;
+
+  const inputCls = 'w-full px-3.5 py-2.5 border border-gray-200 rounded text-sm text-gray-900 bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:opacity-45 disabled:cursor-not-allowed';
+
+  async function loadSpace() {
+    try {
+      const res = await api(`/coworkingSpaces/${spaceId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to load space');
+      spaceData = data.data || data;
+      renderPage();
+    } catch (err) {
+      document.getElementById('pageContent').innerHTML = `<div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded text-sm font-medium">${err.message}</div>`;
+    }
+  }
+
+  function renderPage() {
+    const s = spaceData;
+    document.getElementById('headerTitle').textContent = s.name;
+    document.title = `${s.name} – CoWork`;
+
+    const infoRow = (label, value) => `
+      <div class="flex items-start gap-2.5 py-2.5 border-b border-gray-100 last:border-0 text-sm">
+        <span class="font-semibold text-gray-900 uppercase text-[0.8rem] tracking-wide min-w-[90px] shrink-0 pt-px">${label}</span>
+        <span class="text-gray-500">${value}</span>
+      </div>
+    `;
+
+    document.getElementById('pageContent').innerHTML = `
+      <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+        <div class="font-bold text-[1.1rem] text-gray-900 mb-4">${escHtml(s.name)}</div>
+        ${infoRow('Address', escHtml(s.address || '—'))}
+        ${infoRow('Telephone', escHtml(s.tel || '—'))}
+        ${infoRow('Hours', escHtml(s.opentime || '?') + ' – ' + escHtml(s.closetime || '?'))}
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 flex flex-col gap-4" id="bookingSection">
+        <div class="font-bold text-gray-900">Reserve a Time Slot</div>
+        <div id="bookingAlert"></div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[0.82rem] font-semibold text-gray-900" for="apptDate">Date</label>
+          <input type="date" id="apptDate" class="${inputCls}" required />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[0.82rem] font-semibold text-gray-900" for="apptStartSlot">Start Time</label>
+          <select id="apptStartSlot" class="${inputCls}" required>
+            <option value="">Select start time</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[0.82rem] font-semibold text-gray-900" for="apptEndSlot">End Time</label>
+          <select id="apptEndSlot" class="${inputCls}" required>
+            <option value="">Select end time</option>
+          </select>
+        </div>
+        <button class="bg-primary hover:bg-primary-dark text-white font-semibold px-7 py-3 rounded text-base transition-colors disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center gap-1.5" id="bookBtn" onclick="handleBook()">Confirm Booking</button>
+      </div>
+
+      <div class="hidden bg-white border border-gray-200 rounded-xl shadow-sm p-8 flex flex-col items-center gap-4 text-center" id="successBox"></div>
+    `;
+
+    document.getElementById('apptDate').min = getBangkokTodayDateValue();
+
+    const allSlots = buildHourlySlots(s.opentime, s.closetime);
+    const startSlots = allSlots.slice(0, Math.max(0, allSlots.length - 1));
+    const startSelect = document.getElementById('apptStartSlot');
+    startSelect.innerHTML = ['<option value="">Select start time</option>',
+      ...startSlots.map(slot => `<option value="${slot}">${slot}</option>`)].join('');
+
+    document.getElementById('apptEndSlot').innerHTML = '<option value="">Select end time</option>';
+    document.getElementById('apptEndSlot').disabled = true;
+
+    startSelect.addEventListener('change', () => populateEndSlots(allSlots, startSelect.value));
+
+    if (startSlots.length === 0) {
+      startSelect.disabled = true;
+      document.getElementById('apptEndSlot').disabled = true;
+      document.getElementById('bookingAlert').innerHTML =
+        '<div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded text-sm font-medium mb-1">No hourly slots available for this space.</div>';
+    }
+  }
+
+  async function handleBook() {
+    const alertEl = document.getElementById('bookingAlert');
+    const btn = document.getElementById('bookBtn');
+    const apptDate = document.getElementById('apptDate').value;
+    const apptStartSlot = document.getElementById('apptStartSlot').value;
+    const apptEndSlot = document.getElementById('apptEndSlot').value;
+    alertEl.innerHTML = '';
+
+    if (!apptDate || !apptStartSlot || !apptEndSlot) {
+      alertEl.innerHTML = '<div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded text-sm font-medium mb-1">Please select date, start time, and end time.</div>';
+      return;
+    }
+
+    const startISO = bangkokDateTimeToISO(apptDate, apptStartSlot);
+    const endISO = bangkokDateTimeToISO(apptDate, apptEndSlot);
+    if (!startISO || !endISO) {
+      alertEl.innerHTML = '<div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded text-sm font-medium mb-1">Invalid date/time selection.</div>';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Booking...';
+
+    try {
+      const res = await api(`/coworkingSpaces/${spaceId}/reservations`, {
+        method: 'POST',
+        body: JSON.stringify({ apptDate: startISO, apptEnd: endISO })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Booking failed');
+
+      const reservation = data.data || data;
+      const startText = new Date(startISO).toLocaleString('en-GB', {
+        timeZone: BANGKOK_TIMEZONE, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      const endText = new Date(endISO).toLocaleTimeString('en-GB', { timeZone: BANGKOK_TIMEZONE, hour: '2-digit', minute: '2-digit' });
+
+      document.getElementById('bookingSection').style.display = 'none';
+      const successBox = document.getElementById('successBox');
+      successBox.classList.remove('hidden');
+      successBox.classList.add('flex');
+      successBox.innerHTML = `
+        <div class="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center text-green-600 font-bold text-xl">&#10003;</div>
+        <div>
+          <div class="font-bold text-green-600 text-[1.05rem]">Booking Confirmed</div>
+          <div class="text-sm text-gray-500 mt-1">${escHtml(spaceData.name)}</div>
+          <div class="text-sm text-gray-500">${escHtml(startText)} – ${escHtml(endText)}</div>
+        </div>
+        ${reservation.qrCode ? `
+          <div class="flex flex-col items-center gap-2 p-3.5 bg-slate-50 rounded border border-gray-200">
+            <img src="${reservation.qrCode}" alt="Booking QR Code" class="w-28 h-28 rounded" />
+            <span class="text-[0.72rem] text-gray-400 font-bold uppercase tracking-wide">Scan at check-in</span>
+          </div>
+        ` : ''}
+        <div class="flex gap-2.5 flex-wrap justify-center">
+          <a href="bookings.html" class="bg-primary hover:bg-primary-dark text-white font-semibold px-4 py-2 rounded text-sm transition-colors no-underline">View My Bookings</a>
+          <a href="index.html" class="border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-900 font-semibold px-4 py-2 rounded text-sm transition-colors no-underline">Browse More Spaces</a>
+        </div>
+      `;
+    } catch (err) {
+      alertEl.innerHTML = `<div class="bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded text-sm font-medium mb-1">${err.message}</div>`;
+      btn.disabled = false;
+      btn.textContent = 'Confirm Booking';
+    }
+  }
+
+  loadSpace();
+</script>
+</body>
+</html>
