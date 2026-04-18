@@ -1,5 +1,7 @@
 const CoworkingSpace = require("../models/CoworkingSpace");
 const Reservation = require('../models/Reservation');
+const User = require('../models/User');
+const sendEmail = require('../utils/email');
 
 //@desc Get all coworkingSpaces
 //@route GET /api/v1/coworkingSpaces
@@ -146,8 +148,64 @@ exports.toggleVisibility = async (req, res, next) => {
             });
         }
 
+        const wasVisible = coworkingSpace.isVisible;
         coworkingSpace.isVisible = !coworkingSpace.isVisible;
         await coworkingSpace.save();
+
+        if (wasVisible && !coworkingSpace.isVisible) {
+            const now = new Date();
+            const activeReservations = await Reservation.find({
+                coworkingSpace: coworkingSpace._id,
+                apptDate: { $gte: now }
+            });
+
+            const uniqueUserIds = [...new Set(
+                activeReservations.map(r => r.user.toString())
+            )];
+            const usersToNotify = await User.find({ _id: { $in: uniqueUserIds } });
+
+            for (const user of usersToNotify) {
+                const userReservations = activeReservations.filter(
+                    r => r.user.toString() === user._id.toString()
+                );
+
+                const bookingRows = userReservations.map(r =>
+                    `<tr>
+                        <td style="padding:8px;color:#64748B">Booking ID</td>
+                        <td style="padding:8px">${r._id}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:8px;color:#64748B">Date &amp; Time</td>
+                        <td style="padding:8px"><strong>${new Date(r.apptDate).toLocaleString('en-GB')} – ${new Date(r.apptEnd).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</strong></td>
+                    </tr>`
+                ).join('<tr><td colspan="2"><hr style="border:none;border-top:1px solid #e2e8f0;margin:4px 0"/></td></tr>');
+
+                try {
+                    await sendEmail({
+                        to: user.email,
+                        subject: `Notice: ${coworkingSpace.name} is temporarily unavailable`,
+                        html: `
+                            <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+                                <h2 style="color:#D97706">Space Temporarily Unavailable</h2>
+                                <p>Hi <strong>${user.name}</strong>,</p>
+                                <p>We'd like to let you know that <strong>${coworkingSpace.name}</strong>
+                                   (${coworkingSpace.address}) has been temporarily disabled on our platform.</p>
+                                <p>You have the following upcoming booking(s) at this space:</p>
+                                <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                                    ${bookingRows}
+                                </table>
+                                <p style="color:#64748B;font-size:14px">
+                                    Please contact us or check back later for updates.
+                                    We apologise for any inconvenience caused.
+                                </p>
+                            </div>
+                        `
+                    });
+                } catch (emailErr) {
+                    console.log(`Disable notification failed for ${user.email} (non-fatal):`, emailErr.message);
+                }
+            }
+        }
 
         res.status(200).json({
             success: true,
