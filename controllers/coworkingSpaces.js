@@ -10,12 +10,18 @@ exports.getCoworkingSpaces = async (req, res, next) => {
     const reqQuery = {...req.query};
 
     const removeFields = ['select', 'sort', 'page', 'limit'];
-
     removeFields.forEach(param => delete reqQuery[param]);
     console.log(reqQuery);
 
     let queryStr = JSON.stringify(reqQuery);
     queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g,match => `$${match}`);
+
+    const filter = JSON.parse(queryStr);
+
+    const isAdmin = req.user && req.user.role === 'admin';
+    if (!isAdmin || req.query.showAll !== 'true') {
+        filter.isVisible = true;
+    }
 
     query = CoworkingSpace.find(JSON.parse(queryStr)).populate('reservations');
 
@@ -76,6 +82,15 @@ exports.getCoworkingSpace = async (req, res, next) => {
         if(!coworkingSpace){
             return res.status(400).json({success:false});
         }
+
+        const isAdmin = req.user && req.user.role === 'admin';
+        const isOwner = req.user && coworkingSpace.owner &&
+            coworkingSpace.owner.toString() === req.user.id;
+
+        if (!coworkingSpace.isVisible && !isAdmin && !isOwner) {
+            return res.status(404).json({ success: false, message: 'Space not found' });
+        }
+
         res.status(200).json({success:true, data:coworkingSpace});
     }
     catch(err){
@@ -110,6 +125,38 @@ exports.updateCoworkingSpace = async (req, res, next) => {
     }
 };
 
+//@desc Toggle space visibility (hide/show from public search)
+//@route PATCH /api/v1/coworkingSpaces/:id/visibility
+//@access Private — admin or owner of this space
+exports.toggleVisibility = async (req, res, next) => {
+    try {
+        const coworkingSpace = await CoworkingSpace.findById(req.params.id);
+        if (!coworkingSpace) {
+            return res.status(404).json({ success: false, message: 'Space not found' });
+        }
+
+        const isAdmin = req.user.role === 'admin';
+        const isOwner = coworkingSpace.owner &&
+            coworkingSpace.owner.toString() === req.user.id;
+
+        if (!isAdmin && !isOwner) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to change visibility of this space'
+            });
+        }
+
+        coworkingSpace.isVisible = !coworkingSpace.isVisible;
+        await coworkingSpace.save();
+
+        res.status(200).json({
+            success: true,
+            data: { _id: coworkingSpace._id, isVisible: coworkingSpace.isVisible }
+        });
+    } catch (err) {
+        res.status(400).json({ success: false });
+    }
+};
 
 //@desc Delete coworkingSpace
 //@route DELETE /api/v1/coworkingSpaces/:id

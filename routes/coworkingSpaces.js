@@ -1,5 +1,5 @@
 const express = require('express');
-const { getCoworkingSpaces, createCoworkingSpace, updateCoworkingSpace, deleteCoworkingSpace, getCoworkingSpace } = require('../controllers/coworkingSpaces');
+const { getCoworkingSpaces, createCoworkingSpace, updateCoworkingSpace, deleteCoworkingSpace, getCoworkingSpace, toggleVisibility } = require('../controllers/coworkingSpaces');
 
 const reservationRouter = require('./reservations');
 const roomRouter = require('./rooms');
@@ -13,6 +13,8 @@ router.use('/:coworkingSpaceId/rooms/', roomRouter);
 
 router.route('/').get(getCoworkingSpaces).post(protect, authorize('admin'), createCoworkingSpace);
 router.route('/:id').get(getCoworkingSpace).put(protect, authorize('admin'), updateCoworkingSpace).delete(protect, authorize('admin'), deleteCoworkingSpace);
+
+router.route('/:id/visibility').patch(protect, toggleVisibility);
 
 module.exports = router;
 

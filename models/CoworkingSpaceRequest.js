@@ -62,6 +62,10 @@ const CoworkingSpaceRequestSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
+    },
+    isVisible: {
+        type: Boolean,
+        default: true
     }
 });
 
