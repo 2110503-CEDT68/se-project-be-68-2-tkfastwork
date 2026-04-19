@@ -166,19 +166,17 @@ exports.toggleVisibility = async (req, res, next) => {
         await coworkingSpace.save();
 
         if (wasVisible && !coworkingSpace.isVisible) {
-            const now = new Date();
-            const activeReservations = await Reservation.find({
-                coworkingSpace: coworkingSpace._id,
-                apptDate: { $gte: now }
+            const reservationsToCancel = await Reservation.find({
+                coworkingSpace: coworkingSpace._id
             });
 
             const uniqueUserIds = [...new Set(
-                activeReservations.map(r => r.user.toString())
+                reservationsToCancel.map(r => r.user.toString())
             )];
             const usersToNotify = await User.find({ _id: { $in: uniqueUserIds } });
 
             for (const user of usersToNotify) {
-                const userReservations = activeReservations.filter(
+                const userReservations = reservationsToCancel.filter(
                     r => r.user.toString() === user._id.toString()
                 );
 
@@ -196,20 +194,20 @@ exports.toggleVisibility = async (req, res, next) => {
                 try {
                     await sendEmail({
                         to: user.email,
-                        subject: `Notice: ${coworkingSpace.name} is temporarily unavailable`,
+                        subject: `Booking cancelled: ${coworkingSpace.name} is no longer available`,
                         html: `
                             <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
-                                <h2 style="color:#D97706">Space Temporarily Unavailable</h2>
+                                <h2 style="color:#DC2626">Booking Cancelled</h2>
                                 <p>Hi <strong>${user.name}</strong>,</p>
                                 <p>We'd like to let you know that <strong>${coworkingSpace.name}</strong>
-                                   (${coworkingSpace.address}) has been temporarily disabled on our platform.</p>
-                                <p>You have the following upcoming booking(s) at this space:</p>
+                                   (${coworkingSpace.address}) has been hidden on our platform,
+                                   and the following booking(s) have been cancelled:</p>
                                 <table style="width:100%;border-collapse:collapse;margin:16px 0">
                                     ${bookingRows}
                                 </table>
                                 <p style="color:#64748B;font-size:14px">
-                                    Please contact us or check back later for updates.
                                     We apologise for any inconvenience caused.
+                                    If you have any questions, please contact support.
                                 </p>
                             </div>
                         `
@@ -218,6 +216,8 @@ exports.toggleVisibility = async (req, res, next) => {
                     console.log(`Disable notification failed for ${user.email} (non-fatal):`, emailErr.message);
                 }
             }
+
+            await Reservation.deleteMany({ coworkingSpace: coworkingSpace._id });
         } else if (!wasVisible && coworkingSpace.isVisible) {
             const now = new Date();
             const activeReservations = await Reservation.find({
