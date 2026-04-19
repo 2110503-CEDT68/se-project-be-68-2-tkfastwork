@@ -5,7 +5,8 @@ const {
     getMyRequest,
     acceptRequest,
     rejectRequest,
-    getAllRequests
+    getAllRequests,
+    reviewRequest
 } = require('../controllers/coworkingSpaceRequests');
 const { protect, authorize } = require('../middleware/auth');
 

@@ -362,3 +362,30 @@ exports.getAllRequests = async (req, res) => {
         return res.status(500).json({ success: false, message: 'Cannot fetch requests' });
     }
 };
+
+//@desc   Review a CoworkingSpaceRequest (Admin only)
+//@route  PATCH /api/v1/coworkingSpaceRequests/:id/review
+//@access Private (Admin only)
+exports.reviewRequest = async (req, res) => {
+    try {
+        const { status } = req.body;
+        
+        if (!status) {
+            return res.status(400).json({ success: false, message: 'Status is required (approved or rejected)' });
+        }
+
+        if (status === 'approved') {
+            return exports.acceptRequest(req, res);
+        } else if (status === 'rejected') {
+            return exports.rejectRequest(req, res);
+        } else {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid status. Status must be "approved" or "rejected"' 
+            });
+        }
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot review request' });
+    }
+};
