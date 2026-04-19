@@ -40,10 +40,6 @@ const CoworkingSpaceSchema = new mongoose.Schema({
         type: mongoose.Schema.ObjectId,
         ref: 'User'
     },
-    isVisible: {
-        type: Boolean,
-        default: true
-    },
     createdAt: {
         type: Date,
         default: Date.now

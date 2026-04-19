@@ -185,6 +185,8 @@ exports.acceptRequest = async (req, res) => {
             tel: request.tel,
             opentime: request.opentime,
             closetime: request.closetime,
+            description: request.description,
+            pics: request.pics,
             owner: request.submitter._id,
             isVisible: true
         };
@@ -222,10 +224,10 @@ exports.acceptRequest = async (req, res) => {
             console.log('Email send failed (non-fatal):', emailErr.message);
         }
 
-        res.status(201).json({ 
+        res.status(200).json({ 
             success: true, 
             message: 'Request accepted and CoworkingSpace created successfully',
-            data: { request, coworkingSpace } 
+            data: request
         });
     } catch (err) {
         console.log(err);
