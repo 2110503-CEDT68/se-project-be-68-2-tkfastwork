@@ -4,6 +4,7 @@ const {
     getMyRequests,
     getMyRequest,
     acceptRequest,
+    rejectRequest,
     getAllRequests
 } = require('../controllers/coworkingSpaceRequests');
 const { protect, authorize } = require('../middleware/auth');
@@ -15,5 +16,6 @@ router.route('/admin/all').get(protect, authorize('admin'), getAllRequests);
 router.route('/mine').get(protect, getMyRequests);
 router.route('/mine/:id').get(protect, getMyRequest);
 router.route('/:id/accept').post(protect, authorize('admin'), acceptRequest);
+router.route('/:id/reject').post(protect, authorize('admin'), rejectRequest);
 
 module.exports = router;
