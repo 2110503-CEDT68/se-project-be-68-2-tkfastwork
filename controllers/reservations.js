@@ -1,5 +1,6 @@
 const Reservation = require('../models/Reservation');
 const CoworkingSpace = require('../models/CoworkingSpace');
+const Room = require('../models/Room');
 const User = require('../models/User');
 const { generateQR } = require('../utils/qrcode');
 const sendEmail = require('../utils/email');
@@ -69,6 +70,7 @@ exports.getReservationPublic = async (req, res, next) => {
     try {
         const reservation = await Reservation.findById(req.params.id)
             .populate({ path: 'coworkingSpace', select: 'name address tel opentime closetime' })
+            .populate({ path: 'room', select: 'name capacity' })
             .populate({ path: 'user', select: 'name tel email' });
 
         if (!reservation) {
@@ -95,10 +97,15 @@ exports.getReservations = async (req, res, next) => {
         queryFilter.coworkingSpace = req.params.coworkingSpaceId;
     }
 
-    query = Reservation.find(queryFilter).populate({
-        path: 'coworkingSpace',
-        select: 'name address tel opentime closetime'
-    });
+    query = Reservation.find(queryFilter)
+        .populate({
+            path: 'coworkingSpace',
+            select: 'name address tel opentime closetime'
+        })
+        .populate({
+            path: 'room',
+            select: 'name capacity'
+        });
 
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 25;
@@ -137,10 +144,15 @@ exports.getReservations = async (req, res, next) => {
 //@access   Private
 exports.getReservation = async (req, res, next) => {
     try {
-        const reservation = await Reservation.findById(req.params.id).populate({
-            path: 'coworkingSpace',
-            select: 'name address tel opentime closetime'
-        });
+        const reservation = await Reservation.findById(req.params.id)
+            .populate({
+                path: 'coworkingSpace',
+                select: 'name address tel opentime closetime'
+            })
+            .populate({
+                path: 'room',
+                select: 'name capacity'
+            });
 
         if (!reservation) {
             return res.status(404).json({
@@ -178,6 +190,13 @@ exports.addReservation = async (req, res, next) => {
             });
         }
 
+        if (!req.body.room) {
+            return res.status(400).json({
+                success: false,
+                message: "Please select a room to book."
+            });
+        }
+
         req.body.coworkingSpace = req.params.coworkingSpaceId;
 
         const coworkingSpace = await CoworkingSpace.findById(req.params.coworkingSpaceId);
@@ -186,6 +205,20 @@ exports.addReservation = async (req, res, next) => {
             return res.status(404).json({
                 success: false,
                 message: `No coworkingSpace with the id of ${req.params.coworkingSpaceId}`
+            });
+        }
+
+        const room = await Room.findById(req.body.room);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: `No room with the id of ${req.body.room}`
+            });
+        }
+        if (room.coworkingSpace.toString() !== req.params.coworkingSpaceId.toString()) {
+            return res.status(400).json({
+                success: false,
+                message: "Selected room does not belong to this coworking space."
             });
         }
 
@@ -230,18 +263,29 @@ exports.addReservation = async (req, res, next) => {
             });
         }
 
-        const userSpaceReservations = await Reservation.find({
-            user: req.user.id,
-            coworkingSpace: req.params.coworkingSpaceId
-        });
+        const roomReservations = await Reservation.find({ room: req.body.room });
 
-        const hasConflict = userSpaceReservations.some((existing) => {
+        const roomTaken = roomReservations.some((existing) => {
             const existingStart = new Date(existing.apptDate);
             const existingEnd = getReservationEnd(existing);
             return rangesOverlap(existingStart, existingEnd, resvStart, resvEnd);
         });
 
-        if (hasConflict) {
+        if (roomTaken) {
+            return res.status(400).json({
+                success: false,
+                message: 'This room is already booked during the selected time range.'
+            });
+        }
+
+        const userSelfOverlap = await Reservation.find({ user: req.user.id });
+        const hasSelfConflict = userSelfOverlap.some((existing) => {
+            const existingStart = new Date(existing.apptDate);
+            const existingEnd = getReservationEnd(existing);
+            return rangesOverlap(existingStart, existingEnd, resvStart, resvEnd);
+        });
+
+        if (hasSelfConflict) {
             return res.status(400).json({
                 success: false,
                 message: 'You already have a reservation that overlaps this selected range.'
@@ -319,6 +363,7 @@ exports.addReservation = async (req, res, next) => {
                             <p>Your reservation at <strong>${coworkingSpace.name}</strong> is confirmed.</p>
                             <table style="width:100%;border-collapse:collapse;margin:16px 0">
                                 <tr><td style="padding:8px;color:#64748B">Space</td><td style="padding:8px"><strong>${coworkingSpace.name}</strong></td></tr>
+                                <tr><td style="padding:8px;color:#64748B">Room</td><td style="padding:8px"><strong>${room.name}</strong></td></tr>
                                 <tr><td style="padding:8px;color:#64748B">Address</td><td style="padding:8px">${coworkingSpace.address}</td></tr>
                                 <tr><td style="padding:8px;color:#64748B">Date &amp; Time</td><td style="padding:8px"><strong>${new Date(reservation.apptDate).toLocaleString('en-GB')} - ${new Date(reservation.apptEnd).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</strong></td></tr>
                                 <tr><td style="padding:8px;color:#64748B">Booking ID</td><td style="padding:8px">${reservation._id}</td></tr>
@@ -432,19 +477,36 @@ exports.updateReservation = async (req, res, next) => {
             });
         }
 
-        const userSpaceReservations = await Reservation.find({
+        const roomReservations = await Reservation.find({
             _id: { $ne: reservation._id.toString() },
-            user: reservation.user,
-            coworkingSpace: reservation.coworkingSpace
+            room: reservation.room
         });
 
-        const hasConflict = userSpaceReservations.some((existing) => {
+        const roomTaken = roomReservations.some((existing) => {
             const existingStart = new Date(existing.apptDate);
             const existingEnd = getReservationEnd(existing);
             return rangesOverlap(existingStart, existingEnd, nextApptDate, nextApptEnd);
         });
 
-        if (hasConflict) {
+        if (roomTaken) {
+            return res.status(400).json({
+                success: false,
+                message: 'This room is already booked during the selected time range.'
+            });
+        }
+
+        const userSelfOverlap = await Reservation.find({
+            _id: { $ne: reservation._id.toString() },
+            user: reservation.user
+        });
+
+        const hasSelfConflict = userSelfOverlap.some((existing) => {
+            const existingStart = new Date(existing.apptDate);
+            const existingEnd = getReservationEnd(existing);
+            return rangesOverlap(existingStart, existingEnd, nextApptDate, nextApptEnd);
+        });
+
+        if (hasSelfConflict) {
             return res.status(400).json({
                 success: false,
                 message: 'You already have a reservation that overlaps this selected range.'

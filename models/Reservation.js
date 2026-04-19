@@ -21,7 +21,8 @@ const ReservationSchema = new mongoose.Schema({
     },
     room: {
         type: mongoose.Schema.ObjectId,
-        ref: 'Room'
+        ref: 'Room',
+        required: true
     },
     qrCode: {
         type: String

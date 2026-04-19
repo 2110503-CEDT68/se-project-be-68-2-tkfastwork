@@ -65,6 +65,23 @@ exports.getRooms = async (req, res) => {
     }
 };
 
+//@desc   List reservation time windows for a room (used by booking UI to show taken slots)
+//@route  GET /api/v1/rooms/:id/reservations
+//@access Private
+exports.getRoomReservations = async (req, res) => {
+    try {
+        const room = await Room.findById(req.params.id);
+        if (!room) {
+            return res.status(404).json({ success: false, message: 'Room not found' });
+        }
+        const reservations = await Reservation.find({ room: room._id }).select('apptDate apptEnd');
+        res.status(200).json({ success: true, count: reservations.length, data: reservations });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot list room reservations' });
+    }
+};
+
 //@desc   Create a room (stub — belongs to US1-4; included so US1-6 is testable end-to-end)
 //@route  POST /api/v1/coworkingSpaces/:coworkingSpaceId/rooms
 //@access Private (owner of the space, or admin)
