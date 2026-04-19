@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const CoworkingSpaceRequest = require('../models/CoworkingSpaceRequest');
 const CoworkingSpace = require('../models/CoworkingSpace');
+const User = require('../models/User');
 const sendEmail = require('../utils/email');
 
 const HAS_LETTER = /[a-zA-Z]/;
@@ -192,6 +193,13 @@ exports.acceptRequest = async (req, res) => {
         };
 
         const coworkingSpace = await CoworkingSpace.create(coworkingSpaceData);
+
+        // Update the submitter's role to 'owner'
+        const user = await User.findById(request.submitter._id);
+        if (user) {
+            user.role = 'owner';
+            await user.save();
+        }
 
         // Update the request status to approved
         request.status = 'approved';
