@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -c \":*)",
+      "Bash(/c/Python313/python.exe -c \"import openpyxl, sys; wb = openpyxl.load_workbook\\(''sprint1.xlsx''\\); ws = wb[''Sprint 1'']; [sys.stdout.write\\(repr\\(row\\) + ''\\\\n''\\) for i,row in enumerate\\(ws.iter_rows\\(min_row=31, max_row=100, values_only=True\\)\\) if any\\(cell is not None for cell in row\\)]\")",
+      "Bash(/c/Python313/python.exe -W ignore -c \":*)",
+      "Bash(/c/Python313/python.exe read_xlsx.py)",
+      "Bash(npm run:*)",
+      "Bash(npx jest:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
