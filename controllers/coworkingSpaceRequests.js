@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const CoworkingSpaceRequest = require('../models/CoworkingSpaceRequest');
 const CoworkingSpace = require('../models/CoworkingSpace');
-const User = require('../models/User');
 const sendEmail = require('../utils/email');
 
 const HAS_LETTER = /[a-zA-Z]/;
@@ -163,141 +162,58 @@ exports.getMyRequest = async (req, res) => {
     }
 };
 
-//@desc   Get all coworking space requests
-//@route  GET /api/v1/coworkingSpaceRequests/all
-//@access Private (Admin)
-exports.getAllRequests = async (req, res) => {
-    let query;
-
-    const reqQuery = { ...req.query };
-    const removeFields = ['select', 'sort', 'page', 'limit'];
-    removeFields.forEach(param => delete reqQuery[param]);
-
-    let queryStr = JSON.stringify(reqQuery);
-    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
-
-    query = CoworkingSpaceRequest.find(JSON.parse(queryStr)).populate('submitter', 'name email');
-
-    if (req.query.select) {
-        const fields = req.query.select.split(',').join(' ');
-        query = query.select(fields);
-    }
-
-    if (req.query.sort) {
-        const sortBy = req.query.sort.split(',').join(' ');
-        query = query.sort(sortBy);
-    } else {
-        query = query.sort('-createdAt');
-    }
-
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 25;
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const total = await CoworkingSpaceRequest.countDocuments(JSON.parse(queryStr));
-
-    query = query.skip(startIndex).limit(limit);
-
+//@desc   Accept a CoworkingSpaceRequest and create a CoworkingSpace (Admin only)
+//@route  POST /api/v1/coworkingSpaceRequests/:id/accept
+//@access Private (Admin only)
+exports.acceptRequest = async (req, res) => {
     try {
-        const requests = await query;
-        const pagination = {};
-
-        if (endIndex < total) {
-            pagination.next = { page: page + 1, limit };
-        }
-
-        if (startIndex > 0) {
-            pagination.prev = { page: page - 1, limit };
-        }
-
-        res.status(200).json({ success: true, count: requests.length, pagination, data: requests });
-    } catch (err) {
-        console.log(err);
-        return res.status(500).json({ success: false, message: 'Cannot fetch requests' });
-    }
-};
-
-//@desc   Review a coworking space request (Approve/Reject)
-//@route  PATCH /api/v1/coworkingSpaceRequests/:id/review
-//@access Private (Admin)
-exports.reviewRequest = async (req, res) => {
-    const { status, rejectionReason } = req.body;
-
-    if (!status || !['approved', 'rejected'].includes(status)) {
-        return res.status(400).json({ success: false, message: 'Please provide a valid status: approved or rejected' });
-    }
-
-    if (status === 'rejected' && (!rejectionReason || !String(rejectionReason).trim())) {
-        return res.status(400).json({ success: false, message: 'Please provide a rejectionReason when rejecting' });
-    }
-
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-        const request = await CoworkingSpaceRequest.findById(req.params.id).session(session);
-
+        // Fetch the request
+        const request = await CoworkingSpaceRequest.findById(req.params.id).populate('submitter');
         if (!request) {
-            await session.abortTransaction();
-            session.endSession();
             return res.status(404).json({ success: false, message: 'Request not found' });
         }
 
+        // Check if already approved
         if (request.status !== 'pending') {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(400).json({ success: false, message: 'Request is already processed' });
+            return res.status(400).json({ success: false, message: `Request has already been ${request.status}` });
         }
 
-        request.status = status;
+        // Create a new CoworkingSpace from the request data
+        const coworkingSpaceData = {
+            name: request.name,
+            address: request.address,
+            tel: request.tel,
+            opentime: request.opentime,
+            closetime: request.closetime,
+            owner: request.submitter._id,
+            isVisible: true
+        };
+
+        const coworkingSpace = await CoworkingSpace.create(coworkingSpaceData);
+
+        // Update the request status to approved
+        request.status = 'approved';
         request.reviewedBy = req.user.id;
-        request.reviewedAt = Date.now();
+        request.reviewedAt = new Date();
+        await request.save();
 
-        if (status === 'rejected') {
-            request.rejectionReason = rejectionReason;
-        }
-
-        await request.save({ session });
-
-        const submitter = await User.findById(request.submitter).session(session);
-
-        if (status === 'approved') {
-            await CoworkingSpace.create([{
-                name: request.name,
-                address: request.address,
-                tel: request.tel,
-                opentime: request.opentime,
-                closetime: request.closetime,
-                description: request.description,
-                pics: request.pics,
-                owner: request.submitter,
-                isVisible: true
-            }], { session });
-
-            if (submitter && submitter.role === 'user') {
-                submitter.role = 'owner';
-                await submitter.save({ session });
-            }
-        }
-
-        await session.commitTransaction();
-        session.endSession();
-
+        // Send approval email to the submitter
         try {
-            if (submitter && submitter.email) {
-                const subject = status === 'approved' ? 'Your co-working space is approved!' : 'Your co-working space request was rejected';
-                const bodyMsg = status === 'approved' 
-                    ? `Good news! Your request to add <strong>${request.name}</strong> has been approved. You are now an owner and your space is live on our platform.`
-                    : `Unfortunately, your request to add <strong>${request.name}</strong> was rejected.<br><br>Reason: ${rejectionReason}`;
-
+            if (request.submitter.email) {
                 await sendEmail({
-                    to: submitter.email,
-                    subject,
+                    to: request.submitter.email,
+                    subject: 'Co-working space request approved',
                     html: `
                         <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
-                            <h2 style="color:${status === 'approved' ? '#10B981' : '#EF4444'}">Request ${status.charAt(0).toUpperCase() + status.slice(1)}</h2>
-                            <p>Hi <strong>${submitter.name}</strong>,</p>
-                            <p>${bodyMsg}</p>
+                            <h2 style="color:#16A34A">Request approved</h2>
+                            <p>Hi <strong>${request.submitter.name}</strong>,</p>
+                            <p>Congratulations! Your request to add <strong>${request.name}</strong> has been approved and is now live on our platform.</p>
+                            <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                                <tr><td style="padding:8px;color:#64748B">Space Name</td><td style="padding:8px">${request.name}</td></tr>
+                                <tr><td style="padding:8px;color:#64748B">Address</td><td style="padding:8px">${request.address}</td></tr>
+                                <tr><td style="padding:8px;color:#64748B">Status</td><td style="padding:8px"><strong>Approved</strong></td></tr>
+                            </table>
+                            <p>You can now manage your space and view bookings through your dashboard.</p>
                         </div>
                     `
                 });
@@ -306,12 +222,143 @@ exports.reviewRequest = async (req, res) => {
             console.log('Email send failed (non-fatal):', emailErr.message);
         }
 
-        res.status(200).json({ success: true, data: request });
-
+        res.status(201).json({ 
+            success: true, 
+            message: 'Request accepted and CoworkingSpace created successfully',
+            data: { request, coworkingSpace } 
+        });
     } catch (err) {
-        await session.abortTransaction();
-        session.endSession();
-        console.error('REVIEW REQUEST ERROR:', err);
-        return res.status(500).json({ success: false, message: 'Transaction failed, cannot review request', error: err.message });
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot accept request' });
+    }
+};
+
+//@desc   Reject a CoworkingSpaceRequest (Admin only)
+//@route  POST /api/v1/coworkingSpaceRequests/:id/reject
+//@access Private (Admin only)
+exports.rejectRequest = async (req, res) => {
+    try {
+        const request = await CoworkingSpaceRequest.findById(req.params.id).populate('submitter');
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Request not found' });
+        }
+
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Request has already been ${request.status}` });
+        }
+
+        const rejectionReason = req.body.rejectionReason && String(req.body.rejectionReason).trim();
+        if (!rejectionReason) {
+            return res.status(400).json({ success: false, message: 'Rejection reason is required' });
+        }
+
+        request.status = 'rejected';
+        request.rejectionReason = rejectionReason;
+        request.reviewedBy = req.user.id;
+        request.reviewedAt = new Date();
+        await request.save();
+
+        try {
+            if (request.submitter.email) {
+                await sendEmail({
+                    to: request.submitter.email,
+                    subject: 'Co-working space request rejected',
+                    html: `
+                        <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+                            <h2 style="color:#DC2626">Request rejected</h2>
+                            <p>Hi <strong>${request.submitter.name}</strong>,</p>
+                            <p>We reviewed your request to add <strong>${request.name}</strong>, and we are unable to approve it at this time.</p>
+                            <p><strong>Reason:</strong> ${rejectionReason}</p>
+                            <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                                <tr><td style="padding:8px;color:#64748B">Request ID</td><td style="padding:8px">${request._id}</td></tr>
+                                <tr><td style="padding:8px;color:#64748B">Status</td><td style="padding:8px"><strong>Rejected</strong></td></tr>
+                            </table>
+                            <p>If you would like to submit a revised request, please review the guidelines and try again.</p>
+                        </div>
+                    `
+                });
+            }
+        } catch (emailErr) {
+            console.log('Email send failed (non-fatal):', emailErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Request rejected successfully',
+            data: request
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot reject request' });
+    }
+};
+
+//@desc   Get all CoworkingSpaceRequests (Admin only)
+//@route  GET /api/v1/coworkingSpaceRequests/admin/all
+//@access Private (Admin only)
+exports.getAllRequests = async (req, res) => {
+    try {
+        let query;
+        const reqQuery = { ...req.query };
+
+        const removeFields = ['select', 'sort', 'page', 'limit'];
+        removeFields.forEach(param => delete reqQuery[param]);
+
+        let queryStr = JSON.stringify(reqQuery);
+        queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+
+        query = CoworkingSpaceRequest.find(JSON.parse(queryStr))
+            .populate('submitter', 'name email tel')
+            .populate('reviewedBy', 'name email');
+
+        // Select fields if specified
+        if (req.query.select) {
+            const fields = req.query.select.split(',').join(' ');
+            query = query.select(fields);
+        }
+
+        // Sort by field if specified
+        if (req.query.sort) {
+            const sortBy = req.query.sort.split(',').join(' ');
+            query = query.sort(sortBy);
+        } else {
+            query = query.sort('-createdAt');
+        }
+
+        // Pagination
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 25;
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const total = await CoworkingSpaceRequest.countDocuments(JSON.parse(JSON.stringify(reqQuery).replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`)));
+
+        query = query.skip(startIndex).limit(limit);
+
+        const requests = await query;
+
+        const pagination = {};
+        if (endIndex < total) {
+            pagination.next = {
+                page: page + 1,
+                limit
+            };
+        }
+        if (startIndex > 0) {
+            pagination.prev = {
+                page: page - 1,
+                limit
+            };
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            count: requests.length, 
+            total,
+            pagination, 
+            data: requests 
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot fetch requests' });
     }
 };
