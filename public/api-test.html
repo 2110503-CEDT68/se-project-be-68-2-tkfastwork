@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoWork API Playground — Premium Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #05070a;
+            --surface-color: rgba(255, 255, 255, 0.05);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --primary: #8b5cf6;
+            --secondary: #06b6d4;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
+            --glass-bg: rgba(15, 23, 42, 0.8);
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background */
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: 
+                radial-gradient(circle at 20% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.15) 0%, transparent 40%);
+        }
+
+        /* Layout */
+        .app-container {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        aside {
+            background: var(--glass-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 2rem 1.5rem;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(12px);
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1.5rem;
+            margin-bottom: 3rem;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px;
+        }
+
+        nav h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            margin-top: 2rem;
+        }
+
+        nav ul {
+            list-style: none;
+        }
+
+        nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        nav a {
+            color: var(--text-main);
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            display: block;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        nav a:hover {
+            background: var(--surface-color);
+            border-color: var(--border-color);
+        }
+
+        nav a.active {
+            background: var(--accent-gradient);
+            color: white;
+            font-weight: 500;
+        }
+
+        /* Main Content */
+        main {
+            padding: 4rem;
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        header {
+            margin-bottom: 4rem;
+        }
+
+        header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            letter-spacing: -1.5px;
+        }
+
+        header p {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            max-width: 600px;
+        }
+
+        .download-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-top: 2rem;
+            text-decoration: none;
+            color: var(--text-main);
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .download-badge:hover {
+            transform: translateY(-2px);
+            border-color: var(--primary);
+            box-shadow: 0 10px 20px -10px rgba(139, 92, 246, 0.4);
+        }
+
+        .download-badge svg {
+            margin-right: 0.75rem;
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Endpoint Section */
+        section {
+            margin-bottom: 6rem;
+            scroll-margin-top: 4rem;
+        }
+
+        .section-header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+        }
+
+        .endpoint-card {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .endpoint-card:hover {
+            border-color: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.07);
+        }
+
+        .endpoint-meta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .method {
+            font-size: 0.7rem;
+            font-weight: 800;
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+
+        .GET { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .POST { background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); }
+        .PUT { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+        .DELETE { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+        .PATCH { background: rgba(168, 85, 247, 0.1); color: #a855f7; border: 1px solid rgba(168, 85, 247, 0.2); }
+
+        .url {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-main);
+        }
+
+        .description {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Code Block */
+        .code-block {
+            background: #000;
+            border-radius: 12px;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            padding: 0.4rem;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            color: white;
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Tooltip Style Feedback */
+        .try-it-btn {
+            background: var(--accent-gradient);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .try-it-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* Result Panel */
+        .result-panel {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px dashed var(--border-color);
+            display: none;
+        }
+
+        .result-panel.active {
+            display: block;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .status-badge {
+            display: inline-block;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-success { background: #065f46; color: #34d399; }
+        .status-error { background: #7f1d1d; color: #f87171; }
+
+        pre {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Utility */
+        .badge-private {
+            background: rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { 
+            background: var(--surface-color); 
+            border-radius: 10px; 
+            border: 2px solid var(--bg-color);
+        }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+    
+    <div class="app-container">
+        <aside>
+            <div class="logo">COWORK API</div>
+            
+            <nav id="sidebar-nav">
+                <h3>Getting Started</h3>
+                <ul>
+                    <li><a href="#intro" class="active">Overview</a></li>
+                </ul>
+
+                <h3>Endpoints</h3>
+                <ul>
+                    <li><a href="#auth-sec">Authentication</a></li>
+                    <li><a href="#spaces-sec">Spaces</a></li>
+                    <li><a href="#rooms-sec">Rooms</a></li>
+                    <li><a href="#reservations-sec">Reservations</a></li>
+                    <li><a href="#requests-sec">Requests</a></li>
+                </ul>
+            </nav>
+
+            <div style="margin-top: auto; font-size: 0.75rem; color: var(--text-muted);">
+                v1.0.0 • Connected to Local Server
+            </div>
+        </aside>
+
+        <main>
+            <section id="intro">
+                <header>
+                    <h1>API Playground</h1>
+                    <p>Everything you need to integrate with the CoWork Space platform. Fast, intuitive, and developer-friendly.</p>
+                    
+                    <a href="/collection.json" download="cowork-api.postman_collection.json" class="download-badge">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                        </svg>
+                        Download Postman Collection
+                    </a>
+                </header>
+            </section>
+
+            <!-- Authentication Section -->
+            <section id="auth-sec">
+                <div class="section-header">
+                    <h2>Authentication</h2>
+                    <p style="color: var(--text-muted)">User signup and login flow.</p>
+                </div>
+
+                <div class="endpoint-card">
+                    <div class="endpoint-meta">
+                        <span class="method POST">POST</span>
+                        <span class="url">/auth/register</span>
+                        <span class="badge-private">Public</span>
+                    </div>
+                    <div class="description">Create a new user account.</div>
+                    <div class="code-block" id="reg-json">
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "secretpassword",
+  "tel": "0812345678"
+}
+                        <button class="copy-btn">Copy</button>
+                    </div>
+                    <button class="try-it-btn" onclick="tryApi('/api/v1/auth/register', 'POST', 'reg-json')">Try Endpoint</button>
+                    <div class="result-panel">
+                        <div class="status-badge"></div>
+                        <pre class="code-block"></pre>
+                    </div>
+                </div>
+
+                <div class="endpoint-card">
+                    <div class="endpoint-meta">
+                        <span class="method POST">POST</span>
+                        <span class="url">/auth/login</span>
+                        <span class="badge-private">Public</span>
+                    </div>
+                    <div class="description">Login to receive a JWT access token.</div>
+                    <div class="code-block" id="login-json">
+{
+  "email": "john@example.com",
+  "password": "secretpassword"
+}
+                        <button class="copy-btn">Copy</button>
+                    </div>
+                    <button class="try-it-btn" onclick="tryApi('/api/v1/auth/login', 'POST', 'login-json')">Try Endpoint</button>
+                    <div class="result-panel">
+                        <div class="status-badge"></div>
+                        <pre class="code-block"></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Spaces Section -->
+            <section id="spaces-sec">
+                <div class="section-header">
+                    <h2>Coworking Spaces</h2>
+                    <p style="color: var(--text-muted)">Browse and manage coworking locations.</p>
+                </div>
+
+                <div class="endpoint-card">
+                    <div class="endpoint-meta">
+                        <span class="method GET">GET</span>
+                        <span class="url">/coworkingSpaces</span>
+                        <span class="badge-private">Public</span>
+                    </div>
+                    <div class="description">Search and list all available spaces.</div>
+                    <button class="try-it-btn" onclick="tryApi('/api/v1/coworkingSpaces', 'GET')">Try Endpoint</button>
+                    <div class="result-panel">
+                        <div class="status-badge"></div>
+                        <pre class="code-block"></pre>
+                    </div>
+                </div>
+
+                <div class="endpoint-card">
+                    <div class="endpoint-meta">
+                        <span class="method POST">POST</span>
+                        <span class="url">/coworkingSpaces</span>
+                        <span class="badge-private">Admin Only</span>
+                    </div>
+                    <div class="description">Register a new coworking space location.</div>
+                    <div class="code-block" id="space-json">
+{
+  "name": "Innovation Hub",
+  "address": "456 Silicon Rd, Bangkok",
+  "tel": "029876543",
+  "opentime": "09:00",
+  "closetime": "21:00"
+}
+                        <button class="copy-btn">Copy</button>
+                    </div>
+                    <button class="try-it-btn" onclick="tryApi('/api/v1/coworkingSpaces', 'POST', 'space-json')">Try Endpoint</button>
+                    <div class="result-panel">
+                        <div class="status-badge"></div>
+                        <pre class="code-block"></pre>
+                    </div>
+                </div>
+            </section>
+
+            <section id="rooms-sec">
+                <div class="section-header">
+                    <h2>Rooms</h2>
+                    <p style="color: var(--text-muted)">Manage rooms within a coworking space.</p>
+                </div>
+                 <div class="endpoint-card">
+                    <div class="endpoint-meta">
+                        <span class="method GET">GET</span>
+                        <span class="url">/rooms</span>
+                    </div>
+                    <div class="description">Fetch all rooms available across the platform.</div>
+                    <button class="try-it-btn" onclick="tryApi('/api/v1/rooms', 'GET')">Try Endpoint</button>
+                    <div class="result-panel">
+                        <div class="status-badge"></div>
+                        <pre class="code-block"></pre>
+                    </div>
+                </div>
+            </section>
+
+            <section id="reservations-sec">
+                <div class="section-header">
+                    <h2>Reservations</h2>
+                    <p style="color: var(--text-muted)">Booking system for rooms.</p>
+                </div>
+                <!-- Add reservation endpoints here... -->
+                <p style="color: var(--text-muted); font-size: 0.9rem; font-style: italic;">Refer to Postman collection for full reservation CRUD parameters.</p>
+            </section>
+
+            <section id="requests-sec">
+                <div class="section-header">
+                    <h2>Space Owner Requests</h2>
+                    <p style="color: var(--text-muted)">Onboarding flow for new co-working space owners.</p>
+                </div>
+                 <div class="endpoint-card">
+                    <div class="endpoint-meta">
+                        <span class="method POST">POST</span>
+                        <span class="url">/coworkingSpaceRequests</span>
+                        <span class="badge-private">Auth Required</span>
+                    </div>
+                    <div class="description">Submit a request to list your co-working space.</div>
+                    <div class="code-block" id="req-body">
+{
+  "name": "Sky Workspace",
+  "description": "High-altitude productivity with premium views and high-speed satellite internet for elite creators. Minimum 10 words requirement for verification.",
+  "address": "Phaya Thai Road, Bangkok",
+  "opentime": "08:00",
+  "closetime": "22:00",
+  "tel": "0819998888",
+  "proofOfOwnership": "https://example.com/deed.pdf"
+}
+                        <button class="copy-btn">Copy</button>
+                    </div>
+                    <button class="try-it-btn" onclick="tryApi('/api/v1/coworkingSpaceRequests', 'POST', 'req-body')">Try Endpoint</button>
+                    <div class="result-panel">
+                        <div class="status-badge"></div>
+                        <pre class="code-block"></pre>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        // Smooth scroll navigation
+        document.querySelectorAll('#sidebar-nav a').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                document.querySelector(targetId).scrollIntoView({
+                    behavior: 'smooth'
+                });
+                
+                // Update active state
+                document.querySelectorAll('#sidebar-nav a').forEach(a => a.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Copy button functionality
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const text = e.target.parentElement.innerText.replace('Copy', '').trim();
+                navigator.clipboard.writeText(text);
+                btn.innerText = 'Copied!';
+                setTimeout(() => btn.innerText = 'Copy', 2000);
+            });
+        });
+
+        // API Test function
+        async function tryApi(url, method, bodyId = null) {
+            const btn = event.target;
+            const panel = btn.nextElementSibling;
+            const statusBadge = panel.querySelector('.status-badge');
+            const resultPre = panel.querySelector('pre');
+
+            panel.classList.add('active');
+            statusBadge.textContent = 'Loading...';
+            statusBadge.className = 'status-badge';
+            resultPre.textContent = '';
+
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            if (bodyId) {
+                const bodyText = document.getElementById(bodyId).innerText.replace('Copy', '').trim();
+                options.body = bodyText;
+            }
+
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                
+                statusBadge.textContent = `Status: ${response.status} ${response.statusText}`;
+                statusBadge.classList.add(response.ok ? 'status-success' : 'status-error');
+                resultPre.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                statusBadge.textContent = 'Error: Connection Refused';
+                statusBadge.classList.add('status-error');
+                resultPre.textContent = 'Make sure the server is running on port 5000.\n' + err.message;
+            }
+        }
+
+        // Simple intersection observer to update sidebar active state
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.getAttribute('id');
+                    document.querySelectorAll('#sidebar-nav a').forEach(a => {
+                        a.classList.toggle('active', a.getAttribute('href') === `#${id}`);
+                    });
+                }
+            });
+        }, { threshold: 0.5 });
+
+        document.querySelectorAll('section[id]').forEach(section => observer.observe(section));
+    </script>
+</body>
+</html>
