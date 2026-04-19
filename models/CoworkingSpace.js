@@ -27,6 +27,14 @@ const CoworkingSpaceSchema = new mongoose.Schema({
     owner: {
         type: mongoose.Schema.ObjectId,
         ref: 'User'
+    },
+    isVisible: {
+        type: Boolean,
+        default: true
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
     }
 }, {
     toJSON: { virtuals: true },
