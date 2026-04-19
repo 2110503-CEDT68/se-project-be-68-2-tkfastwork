@@ -25,7 +25,7 @@ exports.getCoworkingSpaces = async (req, res, next) => {
         filter.isVisible = true;
     }
 
-    query = CoworkingSpace.find(JSON.parse(queryStr)).populate('reservations');
+    query = CoworkingSpace.find(filter).populate('reservations');
 
     if(req.query.select){
         const fields = req.query.select.split(',').join(' ');
