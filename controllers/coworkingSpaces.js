@@ -351,7 +351,16 @@ exports.deleteCoworkingSpace = async (req, res, next) => {
             return res.status(403).json({ success: false, message: 'Not authorized to delete this space' });
         }
 
-        await Reservation.deleteMany({ coworkingSpace: req.params.id }, { session });
+        const roomDocs = await Room.find({ coworkingSpace: req.params.id }, '_id').session(session);
+        const roomIds = roomDocs.map((room) => room._id);
+
+        await Reservation.deleteMany({
+            $or: [
+                { coworkingSpace: req.params.id },
+                { room: { $in: roomIds } }
+            ]
+        }, { session });
+
         await Room.deleteMany({ coworkingSpace: req.params.id }, { session });
         await CoworkingSpace.deleteOne({ _id: req.params.id }, { session });
 
