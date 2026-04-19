@@ -23,9 +23,9 @@ exports.getCoworkingSpaces = async (req, res, next) => {
     const filter = JSON.parse(queryStr);
 
     const isAdmin = req.user && req.user.role === 'admin';
-    if (!isAdmin || req.query.showAll !== 'true') {
+    /* if (!isAdmin || req.query.showAll !== 'true') {
         filter.isVisible = true;
-    }
+    } */
 
     query = CoworkingSpace.find(filter).populate('reservations');
 
