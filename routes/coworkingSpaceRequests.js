@@ -2,14 +2,18 @@ const express = require('express');
 const {
     submitRequest,
     getMyRequests,
-    getMyRequest
+    getMyRequest,
+    acceptRequest,
+    getAllRequests
 } = require('../controllers/coworkingSpaceRequests');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
 router.route('/').post(protect, submitRequest);
+router.route('/admin/all').get(protect, authorize('admin'), getAllRequests);
 router.route('/mine').get(protect, getMyRequests);
 router.route('/mine/:id').get(protect, getMyRequest);
+router.route('/:id/accept').post(protect, authorize('admin'), acceptRequest);
 
 module.exports = router;

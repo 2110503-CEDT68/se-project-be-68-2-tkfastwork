@@ -1,4 +1,5 @@
 const CoworkingSpaceRequest = require('../models/CoworkingSpaceRequest');
+const CoworkingSpace = require('../models/CoworkingSpace');
 const sendEmail = require('../utils/email');
 
 const HAS_LETTER = /[a-zA-Z]/;
@@ -157,5 +158,146 @@ exports.getMyRequest = async (req, res) => {
     } catch (err) {
         console.log(err);
         return res.status(500).json({ success: false, message: 'Cannot fetch request' });
+    }
+};
+
+//@desc   Accept a CoworkingSpaceRequest and create a CoworkingSpace (Admin only)
+//@route  POST /api/v1/coworkingSpaceRequests/:id/accept
+//@access Private (Admin only)
+exports.acceptRequest = async (req, res) => {
+    try {
+        // Fetch the request
+        const request = await CoworkingSpaceRequest.findById(req.params.id).populate('submitter');
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Request not found' });
+        }
+
+        // Check if already approved
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Request has already been ${request.status}` });
+        }
+
+        // Create a new CoworkingSpace from the request data
+        const coworkingSpaceData = {
+            name: request.name,
+            address: request.address,
+            tel: request.tel,
+            opentime: request.opentime,
+            closetime: request.closetime,
+            owner: request.submitter._id,
+            isVisible: true
+        };
+
+        const coworkingSpace = await CoworkingSpace.create(coworkingSpaceData);
+
+        // Update the request status to approved
+        request.status = 'approved';
+        request.reviewedBy = req.user.id;
+        request.reviewedAt = new Date();
+        await request.save();
+
+        // Send approval email to the submitter
+        try {
+            if (request.submitter.email) {
+                await sendEmail({
+                    to: request.submitter.email,
+                    subject: 'Co-working space request approved',
+                    html: `
+                        <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+                            <h2 style="color:#16A34A">Request approved</h2>
+                            <p>Hi <strong>${request.submitter.name}</strong>,</p>
+                            <p>Congratulations! Your request to add <strong>${request.name}</strong> has been approved and is now live on our platform.</p>
+                            <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                                <tr><td style="padding:8px;color:#64748B">Space Name</td><td style="padding:8px">${request.name}</td></tr>
+                                <tr><td style="padding:8px;color:#64748B">Address</td><td style="padding:8px">${request.address}</td></tr>
+                                <tr><td style="padding:8px;color:#64748B">Status</td><td style="padding:8px"><strong>Approved</strong></td></tr>
+                            </table>
+                            <p>You can now manage your space and view bookings through your dashboard.</p>
+                        </div>
+                    `
+                });
+            }
+        } catch (emailErr) {
+            console.log('Email send failed (non-fatal):', emailErr.message);
+        }
+
+        res.status(201).json({ 
+            success: true, 
+            message: 'Request accepted and CoworkingSpace created successfully',
+            data: { request, coworkingSpace } 
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot accept request' });
+    }
+};
+
+//@desc   Get all CoworkingSpaceRequests (Admin only)
+//@route  GET /api/v1/coworkingSpaceRequests/admin/all
+//@access Private (Admin only)
+exports.getAllRequests = async (req, res) => {
+    try {
+        let query;
+        const reqQuery = { ...req.query };
+
+        const removeFields = ['select', 'sort', 'page', 'limit'];
+        removeFields.forEach(param => delete reqQuery[param]);
+
+        let queryStr = JSON.stringify(reqQuery);
+        queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+
+        query = CoworkingSpaceRequest.find(JSON.parse(queryStr))
+            .populate('submitter', 'name email tel')
+            .populate('reviewedBy', 'name email');
+
+        // Select fields if specified
+        if (req.query.select) {
+            const fields = req.query.select.split(',').join(' ');
+            query = query.select(fields);
+        }
+
+        // Sort by field if specified
+        if (req.query.sort) {
+            const sortBy = req.query.sort.split(',').join(' ');
+            query = query.sort(sortBy);
+        } else {
+            query = query.sort('-createdAt');
+        }
+
+        // Pagination
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 25;
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const total = await CoworkingSpaceRequest.countDocuments(JSON.parse(JSON.stringify(reqQuery).replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`)));
+
+        query = query.skip(startIndex).limit(limit);
+
+        const requests = await query;
+
+        const pagination = {};
+        if (endIndex < total) {
+            pagination.next = {
+                page: page + 1,
+                limit
+            };
+        }
+        if (startIndex > 0) {
+            pagination.prev = {
+                page: page - 1,
+                limit
+            };
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            count: requests.length, 
+            total,
+            pagination, 
+            data: requests 
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot fetch requests' });
     }
 };
