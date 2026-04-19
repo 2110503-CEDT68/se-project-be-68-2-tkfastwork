@@ -11,7 +11,7 @@ const {protect, authorize} = require('../middleware/auth');
 router.use('/:coworkingSpaceId/reservations/', reservationRouter);
 router.use('/:coworkingSpaceId/rooms/', roomRouter);
 
-router.route('/owner/mine').get(protect, authorize('user'), getMyCoworkingSpaces);
+router.route('/owner/mine').get(protect, authorize('user', 'owner'), getMyCoworkingSpaces);
 router.route('/').get(getCoworkingSpaces).post(protect, authorize('admin'), createCoworkingSpace);
 router.route('/:id').get(getCoworkingSpace).put(protect, authorize('admin', 'owner'), updateCoworkingSpace).delete(protect, authorize('admin', 'owner'), deleteCoworkingSpace);
 
