@@ -4,7 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node newman/run.js",
+    "test": "npm run test:unit && npm run test:newman",
+    "test:unit": "jest",
+    "test:newman": "node newman/run.js",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
