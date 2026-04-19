@@ -354,6 +354,56 @@ exports.deleteCoworkingSpace = async (req, res, next) => {
         const roomDocs = await Room.find({ coworkingSpace: req.params.id }, '_id').session(session);
         const roomIds = roomDocs.map((room) => room._id);
 
+        const reservationsToDelete = await Reservation.find({
+            $or: [
+                { coworkingSpace: req.params.id },
+                { room: { $in: roomIds } }
+            ]
+        })
+        .populate('user', 'name email')
+        .session(session);
+
+        const reservationsByUser = reservationsToDelete.reduce((acc, reservation) => {
+            const userId = reservation.user?._id?.toString();
+            if (!userId) return acc;
+            if (!acc[userId]) acc[userId] = { user: reservation.user, reservations: [] };
+            acc[userId].reservations.push(reservation);
+            return acc;
+        }, {});
+
+        for (const { user, reservations } of Object.values(reservationsByUser)) {
+            if (!user.email) continue;
+            const bookingRows = reservations.map((r) => `
+                    <tr>
+                        <td style="padding:8px;color:#64748B">Booking ID</td>
+                        <td style="padding:8px">${r._id}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:8px;color:#64748B">Date &amp; Time</td>
+                        <td style="padding:8px"><strong>${new Date(r.apptDate).toLocaleString('en-GB')} – ${new Date(r.apptEnd).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</strong></td>
+                    </tr>`).join('<tr><td colspan="2"><hr style="border:none;border-top:1px solid #e2e8f0;margin:4px 0"/></td></tr>');
+
+            try {
+                await sendEmail({
+                    to: user.email,
+                    subject: `Booking cancelled: ${coworkingSpace.name} has been removed`,
+                    html: `
+                        <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+                            <h2 style="color:#DC2626">Booking Cancelled</h2>
+                            <p>Hi <strong>${user.name}</strong>,</p>
+                            <p>We wanted to let you know that ${coworkingSpace.name} has been deleted and the following booking(s) have been cancelled:</p>
+                            <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                                ${bookingRows}
+                            </table>
+                            <p style="color:#64748B;font-size:14px">We apologise for the inconvenience. If you have any questions, please contact support.</p>
+                        </div>
+                    `
+                });
+            } catch (emailErr) {
+                console.log(`Reservation deletion notification failed for ${user.email} (non-fatal):`, emailErr.message);
+            }
+        }
+
         await Reservation.deleteMany({
             $or: [
                 { coworkingSpace: req.params.id },
