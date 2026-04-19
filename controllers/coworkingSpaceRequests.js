@@ -232,6 +232,66 @@ exports.acceptRequest = async (req, res) => {
     }
 };
 
+//@desc   Reject a CoworkingSpaceRequest (Admin only)
+//@route  POST /api/v1/coworkingSpaceRequests/:id/reject
+//@access Private (Admin only)
+exports.rejectRequest = async (req, res) => {
+    try {
+        const request = await CoworkingSpaceRequest.findById(req.params.id).populate('submitter');
+        if (!request) {
+            return res.status(404).json({ success: false, message: 'Request not found' });
+        }
+
+        if (request.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Request has already been ${request.status}` });
+        }
+
+        const rejectionReason = req.body.rejectionReason && String(req.body.rejectionReason).trim();
+        if (!rejectionReason) {
+            return res.status(400).json({ success: false, message: 'Rejection reason is required' });
+        }
+
+        request.status = 'rejected';
+        request.rejectionReason = rejectionReason;
+        request.reviewedBy = req.user.id;
+        request.reviewedAt = new Date();
+        await request.save();
+
+        try {
+            if (request.submitter.email) {
+                await sendEmail({
+                    to: request.submitter.email,
+                    subject: 'Co-working space request rejected',
+                    html: `
+                        <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+                            <h2 style="color:#DC2626">Request rejected</h2>
+                            <p>Hi <strong>${request.submitter.name}</strong>,</p>
+                            <p>We reviewed your request to add <strong>${request.name}</strong>, and we are unable to approve it at this time.</p>
+                            <p><strong>Reason:</strong> ${rejectionReason}</p>
+                            <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                                <tr><td style="padding:8px;color:#64748B">Request ID</td><td style="padding:8px">${request._id}</td></tr>
+                                <tr><td style="padding:8px;color:#64748B">Status</td><td style="padding:8px"><strong>Rejected</strong></td></tr>
+                            </table>
+                            <p>If you would like to submit a revised request, please review the guidelines and try again.</p>
+                        </div>
+                    `
+                });
+            }
+        } catch (emailErr) {
+            console.log('Email send failed (non-fatal):', emailErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Request rejected successfully',
+            data: request
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot reject request' });
+    }
+};
+
 //@desc   Get all CoworkingSpaceRequests (Admin only)
 //@route  GET /api/v1/coworkingSpaceRequests/admin/all
 //@access Private (Admin only)
