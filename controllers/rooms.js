@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Room = require('../models/Room');
 const CoworkingSpace = require('../models/CoworkingSpace');
 const Reservation = require('../models/Reservation');
@@ -12,12 +13,52 @@ const isOwnerOfSpace = (space, userId) =>
 //@access Public
 exports.getRooms = async (req, res) => {
     try {
-        const filter = {};
+        let query;
+        const reqQuery = { ...req.query };
+        const removeFields = ['select', 'sort', 'page', 'limit'];
+        removeFields.forEach(param => delete reqQuery[param]);
+
+        let queryStr = JSON.stringify(reqQuery);
+        queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+        const filter = JSON.parse(queryStr);
+
         if (req.params.coworkingSpaceId) {
             filter.coworkingSpace = req.params.coworkingSpaceId;
         }
-        const rooms = await Room.find(filter);
-        res.status(200).json({ success: true, count: rooms.length, data: rooms });
+
+        query = Room.find(filter);
+
+        if (req.query.select) {
+            const fields = req.query.select.split(',').join(' ');
+            query = query.select(fields);
+        }
+
+        if (req.query.sort) {
+            const sortBy = req.query.sort.split(',').join(' ');
+            query = query.sort(sortBy);
+        } else {
+            query = query.sort('-createdAt');
+        }
+
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 25;
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const total = await Room.countDocuments(filter);
+
+        query = query.skip(startIndex).limit(limit);
+
+        const rooms = await query;
+
+        const pagination = {};
+        if (endIndex < total) {
+            pagination.next = { page: page + 1, limit };
+        }
+        if (startIndex > 0) {
+            pagination.prev = { page: page - 1, limit };
+        }
+
+        res.status(200).json({ success: true, count: rooms.length, pagination, data: rooms });
     } catch (err) {
         console.log(err);
         return res.status(500).json({ success: false, message: 'Cannot list rooms' });
@@ -48,31 +89,70 @@ exports.createRoom = async (req, res) => {
     }
 };
 
+//@desc   Update room details
+//@route  PUT /api/v1/rooms/:id
+//@access Private (owner of the space, or admin)
+exports.updateRoom = async (req, res) => {
+    try {
+        let room = await Room.findById(req.params.id).populate('coworkingSpace');
+        if (!room) {
+            return res.status(404).json({ success: false, message: 'Room not found' });
+        }
+
+        if (req.user.role !== 'admin' && !isOwnerOfSpace(room.coworkingSpace, req.user.id)) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this room' });
+        }
+
+        if (req.body.coworkingSpace) {
+            delete req.body.coworkingSpace; // Prevent moving room
+        }
+
+        room = await Room.findByIdAndUpdate(req.params.id, req.body, {
+            new: true,
+            runValidators: true
+        });
+
+        res.status(200).json({ success: true, data: room });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ success: false, message: 'Cannot update room' });
+    }
+};
+
 //@desc   Delete a room. Cancels all associated reservations and notifies affected users. (US1-6)
 //@route  DELETE /api/v1/rooms/:id
 //@access Private (owner of the space, or admin)
 exports.deleteRoom = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const room = await Room.findById(req.params.id).populate({
             path: 'coworkingSpace',
             select: 'name owner'
-        });
+        }).session(session);
 
         if (!room) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ success: false, message: `No Room with the id of ${req.params.id}` });
         }
 
         if (req.user.role !== 'admin' && !isOwnerOfSpace(room.coworkingSpace, req.user.id)) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ success: false, message: 'Not authorized to delete this room' });
         }
 
         const affectedReservations = await Reservation.find({ room: room._id }).populate({
             path: 'user',
             select: 'name email'
-        });
+        }).session(session);
 
-        await Reservation.deleteMany({ room: room._id });
-        await Room.deleteOne({ _id: room._id });
+        await Reservation.deleteMany({ room: room._id }, { session });
+        await Room.deleteOne({ _id: room._id }, { session });
+
+        await session.commitTransaction();
+        session.endSession();
 
         const spaceName = room.coworkingSpace ? room.coworkingSpace.name : '';
         const notifications = affectedReservations
@@ -105,6 +185,8 @@ exports.deleteRoom = async (req, res) => {
             }
         });
     } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
         console.log(err);
         return res.status(500).json({ success: false, message: 'Cannot delete Room' });
     }

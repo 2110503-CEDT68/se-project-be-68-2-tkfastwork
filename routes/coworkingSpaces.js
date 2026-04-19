@@ -12,7 +12,7 @@ router.use('/:coworkingSpaceId/reservations/', reservationRouter);
 router.use('/:coworkingSpaceId/rooms/', roomRouter);
 
 router.route('/').get(getCoworkingSpaces).post(protect, authorize('admin'), createCoworkingSpace);
-router.route('/:id').get(getCoworkingSpace).put(protect, authorize('admin'), updateCoworkingSpace).delete(protect, authorize('admin'), deleteCoworkingSpace);
+router.route('/:id').get(getCoworkingSpace).put(protect, authorize('admin', 'owner'), updateCoworkingSpace).delete(protect, authorize('admin', 'owner'), deleteCoworkingSpace);
 
 router.route('/:id/visibility').patch(protect, toggleVisibility);
 

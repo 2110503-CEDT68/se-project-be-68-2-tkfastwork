@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const CoworkingSpace = require("../models/CoworkingSpace");
 const Reservation = require('../models/Reservation');
+const Room = require('../models/Room');
 const User = require('../models/User');
 const sendEmail = require('../utils/email');
 
@@ -113,17 +115,28 @@ exports.createCoworkingSpace = async (req, res, next) => {
 //@access Private
 exports.updateCoworkingSpace = async (req, res, next) => {
     try{
-        const coworkingSpace = await CoworkingSpace.findByIdAndUpdate(req.params.id, req.body, {
+        let coworkingSpace = await CoworkingSpace.findById(req.params.id);
+        if(!coworkingSpace){
+            return res.status(404).json({success:false, message: 'Space not found'});
+        }
+
+        if (req.user.role !== 'admin' && coworkingSpace.owner.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this space' });
+        }
+
+        if (req.body.owner && req.user.role !== 'admin') {
+            delete req.body.owner;
+        }
+
+        coworkingSpace = await CoworkingSpace.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true
         });
-        if(!coworkingSpace){
-            return res.status(400).json({success:false});
-        }
+        
         res.status(200).json({success:true, data:coworkingSpace});
     }
     catch(err){
-        res.status(400).json({success:false});
+        res.status(500).json({success:false, message: 'Cannot update space'});
     }
 };
 
@@ -205,6 +218,37 @@ exports.toggleVisibility = async (req, res, next) => {
                     console.log(`Disable notification failed for ${user.email} (non-fatal):`, emailErr.message);
                 }
             }
+        } else if (!wasVisible && coworkingSpace.isVisible) {
+            const now = new Date();
+            const activeReservations = await Reservation.find({
+                coworkingSpace: coworkingSpace._id,
+                apptDate: { $gte: now }
+            });
+
+            const uniqueUserIds = [...new Set(
+                activeReservations.map(r => r.user.toString())
+            )];
+            const usersToNotify = await User.find({ _id: { $in: uniqueUserIds } });
+
+            for (const user of usersToNotify) {
+                try {
+                    await sendEmail({
+                        to: user.email,
+                        subject: `Notice: ${coworkingSpace.name} is available again!`,
+                        html: `
+                            <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+                                <h2 style="color:#10B981">Space Available</h2>
+                                <p>Hi <strong>${user.name}</strong>,</p>
+                                <p>We wanted to let you know that <strong>${coworkingSpace.name}</strong>
+                                   (${coworkingSpace.address}) is now visible and fully accessible via the public search.</p>
+                                <p>Your active bookings remain valid. Thank you for your patience!</p>
+                            </div>
+                        `
+                    });
+                } catch (emailErr) {
+                    console.log(`Re-enable notification failed for ${user.email} (non-fatal):`, emailErr.message);
+                }
+            }
         }
 
         res.status(200).json({
@@ -220,16 +264,34 @@ exports.toggleVisibility = async (req, res, next) => {
 //@route DELETE /api/v1/coworkingSpaces/:id
 //@access Private
 exports.deleteCoworkingSpace = async (req, res, next) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try{
-        const coworkingSpace = await CoworkingSpace.findById(req.params.id);
+        const coworkingSpace = await CoworkingSpace.findById(req.params.id).session(session);
         if(!coworkingSpace){
-            return res.status(400).json({success:false});
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({success:false, message: 'Space not found'});
         }
-        await Reservation.deleteMany({ coworkingSpace: req.params.id });
-        await CoworkingSpace.deleteOne({ _id: req.params.id });
+
+        if (req.user.role !== 'admin' && coworkingSpace.owner.toString() !== req.user.id) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(403).json({ success: false, message: 'Not authorized to delete this space' });
+        }
+
+        await Reservation.deleteMany({ coworkingSpace: req.params.id }, { session });
+        await Room.deleteMany({ coworkingSpace: req.params.id }, { session });
+        await CoworkingSpace.deleteOne({ _id: req.params.id }, { session });
+
+        await session.commitTransaction();
+        session.endSession();
+
         res.status(200).json({success:true, data: {}});
     }
     catch(err){
-        res.status(400).json({success:false});
+        await session.abortTransaction();
+        session.endSession();
+        res.status(500).json({success:false, message: 'Cannot delete space'});
     }
 };
