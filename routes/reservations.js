@@ -6,7 +6,7 @@ const router = express.Router({ mergeParams: true });
 const {protect, authorize} = require('../middleware/auth'); 
 
 router.route('/public/:id').get(getReservationPublic);
-router.route('/').get(protect, getReservations).post(protect, authorize('admin', 'user'), addReservation);
-router.route('/:id').get(protect, authorize('admin', 'user'), getReservation).put(protect, authorize('admin', 'user'), updateReservation).delete(protect, authorize('admin', 'user'), deleteReservation);
+router.route('/').get(protect, getReservations).post(protect, authorize('admin', 'user', 'owner'), addReservation);
+router.route('/:id').get(protect, authorize('admin', 'user', 'owner'), getReservation).put(protect, authorize('admin', 'user', 'owner'), updateReservation).delete(protect, authorize('admin', 'user', 'owner'), deleteReservation);
 
 module.exports = router; 

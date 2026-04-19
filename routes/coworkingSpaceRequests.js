@@ -18,4 +18,7 @@ router.route('/mine/:id').get(protect, getMyRequest);
 router.route('/:id/accept').post(protect, authorize('admin'), acceptRequest);
 router.route('/:id/reject').post(protect, authorize('admin'), rejectRequest);
 
+router.route('/all').get(protect, authorize('admin'), getAllRequests);
+router.route('/:id/review').patch(protect, authorize('admin'), reviewRequest);
+
 module.exports = router;

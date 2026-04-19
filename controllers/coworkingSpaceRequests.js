@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const CoworkingSpaceRequest = require('../models/CoworkingSpaceRequest');
 const CoworkingSpace = require('../models/CoworkingSpace');
 const sendEmail = require('../utils/email');
