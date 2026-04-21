@@ -35,6 +35,24 @@ const UserSchema=new mongoose.Schema({
         minlength: 6,
         select: false
     },
+    dateOfBirth: {
+        type: Date,
+        required: [true, 'Please add a date of birth']
+    },
+    occupation: {
+        type: String,
+        required: [true, 'Please add an occupation']
+    },
+    gender: {
+        type: String,
+        enum: ['male', 'female', 'non-binary', 'other', 'prefer not to say'],
+        required: [true, 'Please select a gender']
+    },
+    revenue: {
+        type: Number,
+        min: [0, 'Revenue cannot be negative'],
+        required: [true, 'Please add a revenue']
+    },
     resetPasswordToken: String,
     resetPasswordExpire: Date,
     createdAt:{
