@@ -22,6 +22,15 @@ const RoomSchema = new mongoose.Schema({
         ref: 'CoworkingSpace',
         required: true
     },
+    roomType: {
+        type: String,
+        enum: ['meeting', 'private office', 'phone booth'],
+        required: [true, 'Please specify a room type']
+    },
+    facilities: {
+        type: [String],
+        default: []
+    },
     createdAt: {
         type: Date,
         default: Date.now
