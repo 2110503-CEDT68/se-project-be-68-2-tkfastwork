@@ -7,6 +7,66 @@ const sendEmail = require('../utils/email');
 const BANGKOK_TIMEZONE = 'Asia/Bangkok';
 const DEFAULT_DURATION_MINUTES = 60;
 
+const buildDemographicUserFilter = async (query) => {
+    const userFilter = {};
+    let hasDemoFilter = false;
+
+    if (query.userGender) {
+        if (typeof query.userGender === 'object' && query.userGender.in) {
+            const vals = Array.isArray(query.userGender.in) ? query.userGender.in : query.userGender.in.split(',');
+            userFilter.gender = { $in: vals };
+        } else if (typeof query.userGender === 'string') {
+            userFilter.gender = query.userGender;
+        }
+        hasDemoFilter = true;
+    }
+
+    if (query.userOccupation) {
+        userFilter.occupation = query.userOccupation;
+        hasDemoFilter = true;
+    }
+
+    if (query.userMinAge || query.userMaxAge) {
+        const now = new Date('2026-04-22');
+        const dobFilter = {};
+        if (query.userMaxAge) {
+            const minDob = new Date(now);
+            minDob.setFullYear(minDob.getFullYear() - parseInt(query.userMaxAge) - 1);
+            dobFilter.$gte = minDob;
+        }
+        if (query.userMinAge) {
+            const maxDob = new Date(now);
+            maxDob.setFullYear(maxDob.getFullYear() - parseInt(query.userMinAge));
+            dobFilter.$lte = maxDob;
+        }
+        userFilter.dateOfBirth = dobFilter;
+        hasDemoFilter = true;
+    }
+
+    // Handle both extended qs format (query.userRevenue.gte) and bracket notation
+    const userRevenue = query.userRevenue;
+    if (userRevenue && typeof userRevenue === 'object') {
+        const revFilter = {};
+        if (userRevenue.gte) revFilter.$gte = parseFloat(userRevenue.gte);
+        if (userRevenue.lte) revFilter.$lte = parseFloat(userRevenue.lte);
+        if (Object.keys(revFilter).length > 0) {
+            userFilter.revenue = revFilter;
+            hasDemoFilter = true;
+        }
+    } else if (query['userRevenue[gte]'] || query['userRevenue[lte]']) {
+        const revFilter = {};
+        if (query['userRevenue[gte]']) revFilter.$gte = parseFloat(query['userRevenue[gte]']);
+        if (query['userRevenue[lte]']) revFilter.$lte = parseFloat(query['userRevenue[lte]']);
+        userFilter.revenue = revFilter;
+        hasDemoFilter = true;
+    }
+
+    if (!hasDemoFilter) return null;
+
+    const matchingUsers = await User.find(userFilter).select('_id');
+    return matchingUsers.map(u => u._id);
+};
+
 const isValidDate = (date) => date instanceof Date && !Number.isNaN(date.getTime());
 
 const parseHHMMToMinutes = (timeStr) => {
@@ -95,6 +155,24 @@ exports.getReservations = async (req, res, next) => {
     }
     else if (req.params.coworkingSpaceId) {
         queryFilter.coworkingSpace = req.params.coworkingSpaceId;
+    }
+
+    // Demographic filters (two-step: find matching users, then filter reservations)
+    try {
+        const demographicUserIds = await buildDemographicUserFilter(req.query);
+        if (demographicUserIds) {
+            if (queryFilter.user) {
+                // Non-admin: intersect with their own user id
+                if (!demographicUserIds.some(id => id.toString() === queryFilter.user.toString())) {
+                    return res.status(200).json({ success: true, count: 0, pagination: {}, data: [] });
+                }
+            } else {
+                queryFilter.user = { $in: demographicUserIds };
+            }
+        }
+    } catch (demoErr) {
+        console.log('Demographic filter error:', demoErr);
+        return res.status(500).json({ success: false, message: 'Cannot apply demographic filters' });
     }
 
     query = Reservation.find(queryFilter)

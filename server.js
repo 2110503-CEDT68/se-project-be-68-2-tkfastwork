@@ -21,11 +21,13 @@ const coworkingSpaces = require('./routes/coworkingSpaces');
 const reservations = require('./routes/reservations');
 const rooms = require('./routes/rooms');
 const coworkingSpaceRequests = require('./routes/coworkingSpaceRequests');
+const stats = require('./routes/stats');
 
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api/v1/coworkingSpaces', coworkingSpaces);
+app.use('/api/v1/coworkingSpaces', stats);
 app.use('/api/v1/reservations', reservations);
 app.use('/api/v1/rooms', rooms);
 app.use('/api/v1/coworkingSpaceRequests', coworkingSpaceRequests);
