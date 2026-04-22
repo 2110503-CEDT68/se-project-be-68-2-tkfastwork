@@ -51,7 +51,8 @@ const UserSchema=new mongoose.Schema({
     revenue: {
         type: Number,
         min: [0, 'Revenue cannot be negative'],
-        required: [true, 'Please add a revenue']
+        required: [true, 'Please add a revenue'],
+        default: 0
     },
     resetPasswordToken: String,
     resetPasswordExpire: Date,

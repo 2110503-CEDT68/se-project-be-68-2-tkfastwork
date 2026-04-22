@@ -13,9 +13,8 @@
 3. [Coworking Space Requests](#3-coworking-space-requests)
 4. [Rooms](#4-rooms)
 5. [Reservations](#5-reservations)
-6. [AI Recommendation](#6-ai-recommendation)
-7. [Data Models](#7-data-models)
-8. [Error Reference](#8-error-reference)
+6. [Data Models](#6-data-models)
+7. [Error Reference](#7-error-reference)
 
 ---
 
@@ -958,49 +957,7 @@ Authorization: Bearer <token>
 
 ---
 
-## 6. AI Recommendation
-
-### POST `/recommend`
-
-Get an AI-powered coworking space recommendation based on the user's booking history.
-
-**Access:** Private (any authenticated user)
-
-The endpoint:
-1. Fetches the user's 10 most recent reservations.
-2. Fetches all available coworking spaces.
-3. Sends both to an LLM (via OpenRouter) and returns a structured recommendation.
-
-**Request Body:** Empty — no body required.
-
-**Example Request**
-```
-POST /api/v1/recommend
-Authorization: Bearer <token>
-```
-
-**Example Response** `200 OK`
-```json
-{
-  "success": true,
-  "data": {
-    "recommended": "TechHub BKK",
-    "reason": "You've visited TechHub BKK most frequently and it matches your preferred morning hours.",
-    "alternativeSpaces": ["Creative Lab Thonglor", "The Hive Ekkamai"]
-  }
-}
-```
-
-**Errors**
-
-| Status | Cause |
-|--------|-------|
-| 502    | AI service (OpenRouter) returned an error |
-| 500    | Server error |
-
----
-
-## 7. Data Models
+## 6. Data Models
 
 ### User
 
@@ -1012,6 +969,10 @@ Authorization: Bearer <token>
 | `email`     | string | Required, unique |
 | `role`      | string | `"user"` (default), `"admin"`, or `"owner"` |
 | `password`  | string | bcrypt-hashed, never returned in responses |
+| `dateOfBirth` | Date   | Required |
+| `occupation`  | string | Required |
+| `gender`      | string | Required, enum |
+| `revenue`     | Number | Required, default 0 |
 | `createdAt` | Date   | Auto-set |
 
 ### CoworkingSpace
@@ -1074,7 +1035,7 @@ Authorization: Bearer <token>
 
 ---
 
-## 8. Error Reference
+## 7. Error Reference
 
 All error responses follow this shape:
 
@@ -1124,4 +1085,3 @@ All error responses follow this shape:
 | POST | `/coworkingSpaces/:spaceId/reservations` | User/Admin | Create reservation |
 | PUT | `/reservations/:id` | User/Admin | Update reservation |
 | DELETE | `/reservations/:id` | User/Admin | Cancel reservation |
-| POST | `/recommend` | User/Admin | AI space recommendation |

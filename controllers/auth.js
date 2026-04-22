@@ -5,14 +5,24 @@ const User = require('../models/User');
 //@access   Public
 exports.register = async (req, res, next) =>{
     try{
-        const {name, tel, email, password, role} = req.body;
+        const {name, tel, email, password, role, dateOfBirth, occupation, gender, revenue} = req.body;
+        
+        // Prevent role escalation - only 'user' allowed during registration
+        // 'owner' is granted when a request is approved.
+        // 'admin' must be set manually in DB or by another admin.
+        const userRole = (role === 'admin') ? 'user' : (role || 'user');
+
         //Create user
         const user = await User.create({
             name,
             tel,
             email,
             password,
-            ...(role && { role })
+            role: userRole,
+            dateOfBirth,
+            occupation,
+            gender,
+            revenue
         });
         // const token = user.getSignedJwtToken();
 
@@ -20,7 +30,7 @@ exports.register = async (req, res, next) =>{
         sendTokenResponse(user, 200, res);
     }
     catch(err){
-        res.status(400).json({success:false});
+        res.status(400).json({success:false, message: err.message});
         console.log(err.stack);
     }
 }
@@ -96,6 +106,34 @@ exports.getMe = async(req, res, next) => {
         data:user
     });
 }
+
+//@desc     Update user details
+//@route    PUT /api/v1/auth/updatedetails
+//@access   Private
+exports.updateDetails = async (req, res, next) => {
+    const fieldsToUpdate = {
+        name: req.body.name,
+        email: req.body.email,
+        tel: req.body.tel,
+        dateOfBirth: req.body.dateOfBirth,
+        occupation: req.body.occupation,
+        gender: req.body.gender,
+        revenue: req.body.revenue
+    };
+
+    // Remove undefined fields
+    Object.keys(fieldsToUpdate).forEach(key => fieldsToUpdate[key] === undefined && delete fieldsToUpdate[key]);
+
+    const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
+        new: true,
+        runValidators: true
+    });
+
+    res.status(200).json({
+        success: true,
+        data: user
+    });
+};
 
 //@desc     Log user out / clear cookie
 //@route    GET /api/v1/auth/logout
