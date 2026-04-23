@@ -494,6 +494,13 @@ describe('deleteCoworkingSpace', () => {
         const space = { _id: '1', name: 'Space to Delete', owner: { toString: () => 'a1' } };
         CoworkingSpace.findById.mockReturnThis();
         CoworkingSpace.session = jest.fn().mockResolvedValue(space);
+        Room.find.mockReturnValue({
+            session: jest.fn().mockResolvedValue([])
+        });
+        Reservation.find.mockReturnValue({
+            populate: jest.fn().mockReturnThis(),
+            session: jest.fn().mockResolvedValue([])
+        });
         Reservation.deleteMany.mockResolvedValue({ deletedCount: 1 });
         Room.deleteMany.mockResolvedValue({ deletedCount: 1 });
         CoworkingSpace.deleteOne.mockResolvedValue({ deletedCount: 1 });

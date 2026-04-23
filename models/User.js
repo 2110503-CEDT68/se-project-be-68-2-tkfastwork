@@ -2,6 +2,54 @@ const mongoose=require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+const ReportPreferencesSchema = new mongoose.Schema({
+    enabled: {
+        type: Boolean,
+        default: false
+    },
+    frequency: {
+        type: String,
+        enum: ['daily', 'weekly', 'monthly'],
+        default: 'weekly'
+    },
+    hour: {
+        type: Number,
+        min: 0,
+        max: 23,
+        default: 8
+    },
+    minute: {
+        type: Number,
+        min: 0,
+        max: 59,
+        default: 0
+    },
+    timezone: {
+        type: String,
+        default: process.env.DEFAULT_REPORT_TIMEZONE || 'UTC'
+    },
+    dayOfWeek: {
+        type: Number,
+        min: 0,
+        max: 6,
+        default: 1
+    },
+    dayOfMonth: {
+        type: Number,
+        min: 1,
+        max: 31,
+        default: 1
+    },
+    lookbackDays: {
+        type: Number,
+        min: 1,
+        max: 365,
+        default: 30
+    },
+    lastRunAt: Date,
+    nextRunAt: Date
+}, { _id: false });
+
 const UserSchema=new mongoose.Schema({
     name:{
         type:String,
@@ -56,6 +104,10 @@ const UserSchema=new mongoose.Schema({
     },
     resetPasswordToken: String,
     resetPasswordExpire: Date,
+    reportPreferences: {
+        type: ReportPreferencesSchema,
+        default: () => ({})
+    },
     createdAt:{
         type: Date,
         default:Date.now
