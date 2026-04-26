@@ -4,6 +4,8 @@ const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const path = require('path');
 const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 
 dotenv.config({path:'./config/config.env'});
 const auth = require('./routes/auth');
@@ -27,6 +29,13 @@ const { startReportScheduler } = require('./services/reportScheduler');
 
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Swagger docs
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get('/api-docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+});
 
 app.use('/api/v1/coworkingSpaces', coworkingSpaces);
 app.use('/api/v1/coworkingSpaces', stats);
