@@ -1,10 +1,10 @@
-const sendEmail = require('../utils/email');
-const { getOwnerReportData } = require('./reportData');
-const { buildOwnerReportPdf } = require('../utils/reportPdf');
+const sendEmail = require("../utils/email");
+const { getOwnerReportData } = require("./reportData");
+const { buildOwnerReportPdf } = require("../utils/reportPdf");
 
 const buildFilename = (date = new Date()) => {
-    const isoDate = new Date(date).toISOString().slice(0, 10);
-    return `owner-report-${isoDate}.pdf`;
+  const isoDate = new Date(date).toISOString().slice(0, 10);
+  return `owner-report-${isoDate}.pdf`;
 };
 
 const buildEmailHtml = (reportData) => `
@@ -22,57 +22,71 @@ const buildEmailHtml = (reportData) => `
     </div>
 `;
 
-const buildOwnerReportAssets = async ({ ownerId, from, to, lookbackDays, now = new Date() }) => {
-    const reportData = await getOwnerReportData({
-        ownerId,
-        from,
-        to,
-        lookbackDays,
-        referenceDate: now
-    });
+const buildOwnerReportAssets = async ({
+  ownerId,
+  from,
+  to,
+  lookbackDays,
+  now = new Date(),
+}) => {
+  const reportData = await getOwnerReportData({
+    ownerId,
+    from,
+    to,
+    lookbackDays,
+    referenceDate: now,
+  });
 
-    return {
-        reportData,
-        pdfBuffer: buildOwnerReportPdf(reportData),
-        filename: buildFilename(now)
-    };
+  return {
+    reportData,
+    pdfBuffer: await buildOwnerReportPdf(reportData),
+    filename: buildFilename(now),
+  };
 };
 
-const sendOwnerReportEmail = async ({ owner, from, to, lookbackDays, now = new Date() }) => {
-    if (!owner || !owner._id) {
-        throw new Error('Owner is required to send a report');
-    }
+const sendOwnerReportEmail = async ({
+  owner,
+  from,
+  to,
+  lookbackDays,
+  now = new Date(),
+}) => {
+  if (!owner || !owner._id) {
+    throw new Error("Owner is required to send a report");
+  }
 
-    if (!owner.email) {
-        throw new Error('Owner email is required to send a report');
-    }
+  if (!owner.email) {
+    throw new Error("Owner email is required to send a report");
+  }
 
-    const { reportData, pdfBuffer, filename } = await buildOwnerReportAssets({
-        ownerId: owner._id,
-        from,
-        to,
-        lookbackDays,
-        now
-    });
+  const { reportData, pdfBuffer, filename } = await buildOwnerReportAssets({
+    ownerId: owner._id,
+    from,
+    to,
+    lookbackDays,
+    now,
+  });
 
-    await sendEmail({
-        to: owner.email,
-        subject: 'Your scheduled coworking report',
-        html: buildEmailHtml(reportData),
-        attachments: [{
-            filename,
-            content: pdfBuffer,
-            contentType: 'application/pdf'
-        }]
-    });
+  await sendEmail({
+    to: owner.email,
+    subject: "Your scheduled coworking report",
+    html: buildEmailHtml(reportData),
+    attachments: [
+      {
+        filename,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
 
-    return {
-        reportData,
-        filename
-    };
+  return {
+    reportData,
+    filename,
+  };
 };
 
 module.exports = {
-    buildOwnerReportAssets,
-    sendOwnerReportEmail
+  buildOwnerReportAssets,
+  sendOwnerReportEmail,
 };
