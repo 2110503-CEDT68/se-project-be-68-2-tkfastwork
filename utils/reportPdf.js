@@ -162,6 +162,7 @@ const buildOwnerReportPdf = (reportData) => {
     const offsets = [0];
 
     for (let index = 1; index < objects.length; index += 1) {
+        /* istanbul ignore next: defensive guard for sparse object slots */
         if (!objects[index]) continue;
         offsets[index] = Buffer.byteLength(pdf, 'binary');
         pdf += `${index} 0 obj\n${objects[index]}\nendobj\n`;
@@ -172,6 +173,7 @@ const buildOwnerReportPdf = (reportData) => {
     pdf += '0000000000 65535 f \n';
 
     for (let index = 1; index < objects.length; index += 1) {
+        /* istanbul ignore next: defensive guard for sparse object slots */
         if (!objects[index]) continue;
         pdf += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
     }

@@ -6,6 +6,8 @@
   "scripts": {
     "test": "npm run test:unit && npm run test:newman",
     "test:unit": "jest",
+    "test:coverage": "jest --coverage",
+    "test:us2-4": "jest --coverage --collectCoverageFrom='controllers/reports.js' --collectCoverageFrom='services/reportDelivery.js' --collectCoverageFrom='services/reportScheduler.js' --collectCoverageFrom='utils/reportPdf.js' --collectCoverageFrom='utils/reportSchedule.js' tests/reportPdf.test.js tests/reportSchedule.test.js tests/reportDelivery.test.js tests/reportScheduler.test.js tests/reportsController.test.js",
     "test:newman": "node newman/run.js",
     "start": "node server.js",
     "dev": "nodemon server.js"

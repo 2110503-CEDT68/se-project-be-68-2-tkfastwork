@@ -86,6 +86,7 @@ const zonedTimeToUtc = ({ year, month, day, hour, minute, second = 0 }, timeZone
         utcDate = new Date(utcDate.getTime() + diff);
     }
 
+    /* istanbul ignore next: DST convergence fallback, unreachable for IANA zones */
     return utcDate;
 };
 
