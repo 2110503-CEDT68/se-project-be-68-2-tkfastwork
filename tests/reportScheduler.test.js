@@ -199,6 +199,37 @@ describe('startReportScheduler / stopReportScheduler', () => {
         jest.useRealTimers();
     });
 
+    test('runDueOwnerReports uses new Date() when called without arguments (line 10 default)', async () => {
+        const scheduler = require('../services/reportScheduler');
+        User.find.mockResolvedValue([]);
+        // Calling without args exercises the `now = new Date()` default parameter branch
+        const result = await scheduler.runDueOwnerReports();
+        expect(result).toEqual({ processed: 0, sent: 0 });
+        // The find query should have been called with a Date object for nextRunAt.$lte
+        const findArg = User.find.mock.calls[0][0];
+        expect(findArg['reportPreferences.nextRunAt'].$lte).toBeInstanceOf(Date);
+    });
+
+    test('owner with null reportPreferences falls back to {} via || {} (line 23)', async () => {
+        const scheduler = require('../services/reportScheduler');
+        const owner = {
+            _id: 'owner-null-prefs',
+            email: 'null@test.com',
+            reportPreferences: null,
+            markModified: jest.fn(),
+            save: jest.fn().mockResolvedValue(true)
+        };
+        User.find.mockResolvedValue([owner]);
+        sendOwnerReportEmail.mockResolvedValue({ filename: 'report.pdf' });
+
+        const now = new Date('2026-04-27T10:00:00.000Z');
+        const result = await scheduler.runDueOwnerReports(now);
+
+        // normalizeReportPreferences({}) should not throw — owner is processed
+        expect(result.processed).toBe(1);
+        expect(owner.save).toHaveBeenCalled();
+    });
+
     test('skips overlapping ticks while a prior run is still in flight', async () => {
         jest.useFakeTimers();
         const isolated = loadFreshScheduler({

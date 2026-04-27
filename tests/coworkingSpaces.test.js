@@ -29,6 +29,7 @@ const {
     createCoworkingSpace,
     updateCoworkingSpace,
     toggleVisibility,
+    getMyCoworkingSpaces,
     deleteCoworkingSpace
 } = require('../controllers/coworkingSpaces');
 
@@ -303,8 +304,8 @@ describe('updateCoworkingSpace', () => {
     test('returns 500 when findByIdAndUpdate throws', async () => {
         CoworkingSpace.findById.mockResolvedValue({ _id: '1', owner: 'owner1' });
         CoworkingSpace.findByIdAndUpdate.mockRejectedValue(new Error('DB error'));
-        const req = { 
-            params: { id: '1' }, 
+        const req = {
+            params: { id: '1' },
             body: {},
             user: { id: 'owner1', role: 'user' }
         };
@@ -313,6 +314,42 @@ describe('updateCoworkingSpace', () => {
         await updateCoworkingSpace(req, res);
 
         expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    test('returns 403 when user is neither admin nor owner', async () => {
+        CoworkingSpace.findById.mockResolvedValue({
+            _id: '1',
+            owner: { toString: () => 'owner1' },
+        });
+        const req = {
+            params: { id: '1' },
+            body: {},
+            user: { id: 'someoneElse', role: 'user' },
+        };
+        const res = mockRes();
+
+        await updateCoworkingSpace(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+    });
+
+    test('non-admin: owner field is deleted from body before update', async () => {
+        const space = { _id: '1', name: 'Space', owner: { toString: () => 'owner1' } };
+        CoworkingSpace.findById.mockResolvedValue(space);
+        CoworkingSpace.findByIdAndUpdate.mockResolvedValue(space);
+        const body = { name: 'Updated', owner: 'newOwner' };
+        const req = {
+            params: { id: '1' },
+            body,
+            user: { id: 'owner1', role: 'user' },
+        };
+        const res = mockRes();
+
+        await updateCoworkingSpace(req, res);
+
+        expect(body.owner).toBeUndefined();
+        expect(res.status).toHaveBeenCalledWith(200);
     });
 });
 
@@ -484,6 +521,165 @@ describe('toggleVisibility', () => {
 
         expect(res.status).toHaveBeenCalledWith(400);
     });
+
+    test('re-enable email failure is non-fatal — still responds 200', async () => {
+        const space = {
+            _id: 's1', name: 'Space A', address: '1 Road',
+            isVisible: false,
+            owner: { toString: () => 'owner1' },
+            save: jest.fn().mockResolvedValue(true),
+        };
+        CoworkingSpace.findById.mockResolvedValue(space);
+
+        Reservation.find.mockResolvedValue([
+            { _id: 'r1', user: { toString: () => 'u1' }, apptDate: new Date(), apptEnd: new Date() },
+        ]);
+        User.find.mockResolvedValue([
+            { _id: { toString: () => 'u1' }, email: 'alice@test.com', name: 'Alice' },
+        ]);
+        sendEmail.mockRejectedValue(new Error('SMTP error'));
+
+        const req = { params: { id: 's1' }, user: { role: 'admin', id: 'a1' } };
+        const res = mockRes();
+
+        await toggleVisibility(req, res);
+
+        expect(space.isVisible).toBe(true);
+        expect(sendEmail).toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getMyCoworkingSpaces
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeOwnerQueryChain(docs = [], total = 0) {
+    const chain = {
+        populate: jest.fn().mockReturnThis(),
+        select:   jest.fn().mockReturnThis(),
+        sort:     jest.fn().mockReturnThis(),
+        skip:     jest.fn().mockReturnThis(),
+        limit:    jest.fn().mockResolvedValue(docs),
+    };
+    CoworkingSpace.find.mockReturnValue(chain);
+    CoworkingSpace.countDocuments.mockResolvedValue(total);
+    return chain;
+}
+
+describe('getMyCoworkingSpaces', () => {
+    test('returns 200 with owner spaces', async () => {
+        const spaces = [{ _id: '1', name: 'My Space' }];
+        makeOwnerQueryChain(spaces, 1);
+        const req = { query: {}, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        const filterArg = CoworkingSpace.find.mock.calls[0][0];
+        expect(filterArg.owner).toBe('owner1');
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: true,
+            count: 1,
+            data: spaces,
+        }));
+    });
+
+    test('applies select when provided', async () => {
+        const chain = makeOwnerQueryChain([], 0);
+        const req = { query: { select: 'name,address' }, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        expect(chain.select).toHaveBeenCalledWith('name address');
+    });
+
+    test('applies sort when provided', async () => {
+        const chain = makeOwnerQueryChain([], 0);
+        const req = { query: { sort: 'name' }, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        expect(chain.sort).toHaveBeenCalledWith('name');
+    });
+
+    test('uses default sort (-createdAt) when sort not provided', async () => {
+        const chain = makeOwnerQueryChain([], 0);
+        const req = { query: {}, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        expect(chain.sort).toHaveBeenCalledWith('-createdAt');
+    });
+
+    test('includes pagination.next when more pages exist', async () => {
+        makeOwnerQueryChain([{ _id: '1' }], 30);
+        const req = { query: { page: '1', limit: '25' }, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        const body = res.json.mock.calls[0][0];
+        expect(body.pagination.next).toBeDefined();
+        expect(body.pagination.prev).toBeUndefined();
+    });
+
+    test('includes pagination.prev when not on first page', async () => {
+        makeOwnerQueryChain([], 10);
+        const req = { query: { page: '2', limit: '5' }, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        const body = res.json.mock.calls[0][0];
+        expect(body.pagination.prev).toBeDefined();
+    });
+
+    test('countDocuments is called with owner filter', async () => {
+        makeOwnerQueryChain([], 0);
+        const req = { query: {}, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        const countArg = CoworkingSpace.countDocuments.mock.calls[0][0];
+        expect(countArg.owner).toBe('owner1');
+    });
+
+    test('returns 500 when DB query throws', async () => {
+        const chain = {
+            populate: jest.fn().mockReturnThis(),
+            sort:     jest.fn().mockReturnThis(),
+            skip:     jest.fn().mockReturnThis(),
+            limit:    jest.fn().mockRejectedValue(new Error('DB error')),
+        };
+        CoworkingSpace.find.mockReturnValue(chain);
+        CoworkingSpace.countDocuments.mockResolvedValue(0);
+
+        const req = { query: {}, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot fetch coworking spaces' });
+    });
+
+    test('applies advanced filtering with gt/gte/lt/lte operators', async () => {
+        const chain = makeOwnerQueryChain([], 0);
+        const req = { query: { price: { gte: '500' } }, user: { id: 'owner1' } };
+        const res = mockRes();
+
+        await getMyCoworkingSpaces(req, res);
+
+        const filterArg = CoworkingSpace.find.mock.calls[0][0];
+        expect(filterArg.price).toHaveProperty('$gte', '500');
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -495,7 +691,7 @@ describe('deleteCoworkingSpace', () => {
         CoworkingSpace.findById.mockReturnThis();
         CoworkingSpace.session = jest.fn().mockResolvedValue(space);
         Room.find.mockReturnValue({
-            session: jest.fn().mockResolvedValue([])
+            session: jest.fn().mockResolvedValue([{ _id: 'room1' }, { _id: 'room2' }])
         });
         Reservation.find.mockReturnValue({
             populate: jest.fn().mockReturnThis(),
@@ -540,5 +736,162 @@ describe('deleteCoworkingSpace', () => {
 
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot delete space' });
+    });
+
+    test('returns 403 when user is neither admin nor owner', async () => {
+        const space = { _id: '1', name: 'Space', owner: { toString: () => 'owner1' } };
+        CoworkingSpace.findById.mockReturnThis();
+        CoworkingSpace.session = jest.fn().mockResolvedValue(space);
+
+        const req = { params: { id: '1' }, user: { role: 'user', id: 'someoneElse' } };
+        const res = mockRes();
+
+        await deleteCoworkingSpace(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Not authorized to delete this space' });
+    });
+
+    test('sends notification emails for reservations when deleting', async () => {
+        const space = { _id: '1', name: 'Space A', owner: { toString: () => 'a1' } };
+        CoworkingSpace.findById.mockReturnThis();
+        CoworkingSpace.session = jest.fn().mockResolvedValue(space);
+        Room.find.mockReturnValue({
+            session: jest.fn().mockResolvedValue([])
+        });
+        const future = new Date(Date.now() + 86400000);
+        Reservation.find.mockReturnValue({
+            populate: jest.fn().mockReturnThis(),
+            session: jest.fn().mockResolvedValue([
+                {
+                    _id: 'r1',
+                    user: { _id: { toString: () => 'u1' }, name: 'Alice', email: 'alice@test.com' },
+                    apptDate: future,
+                    apptEnd: future,
+                },
+            ]),
+        });
+        Reservation.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        Room.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        CoworkingSpace.deleteOne.mockResolvedValue({ deletedCount: 1 });
+        sendEmail.mockResolvedValue();
+
+        const req = { params: { id: '1' }, user: { role: 'admin', id: 'a1' } };
+        const res = mockRes();
+
+        await deleteCoworkingSpace(req, res);
+
+        expect(sendEmail).toHaveBeenCalledTimes(1);
+        expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'alice@test.com' }));
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('email failure during delete is non-fatal — still responds 200', async () => {
+        const space = { _id: '1', name: 'Space A', owner: { toString: () => 'a1' } };
+        CoworkingSpace.findById.mockReturnThis();
+        CoworkingSpace.session = jest.fn().mockResolvedValue(space);
+        Room.find.mockReturnValue({
+            session: jest.fn().mockResolvedValue([])
+        });
+        const future = new Date(Date.now() + 86400000);
+        Reservation.find.mockReturnValue({
+            populate: jest.fn().mockReturnThis(),
+            session: jest.fn().mockResolvedValue([
+                {
+                    _id: 'r1',
+                    user: { _id: { toString: () => 'u1' }, name: 'Bob', email: 'bob@test.com' },
+                    apptDate: future,
+                    apptEnd: future,
+                },
+            ]),
+        });
+        Reservation.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        Room.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        CoworkingSpace.deleteOne.mockResolvedValue({ deletedCount: 1 });
+        sendEmail.mockRejectedValue(new Error('SMTP error'));
+
+        const req = { params: { id: '1' }, user: { role: 'admin', id: 'a1' } };
+        const res = mockRes();
+
+        await deleteCoworkingSpace(req, res);
+
+        expect(sendEmail).toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({ success: true, data: {} });
+    });
+
+    test('skips email when reservation user has no email', async () => {
+        const space = { _id: '1', name: 'Space A', owner: { toString: () => 'a1' } };
+        CoworkingSpace.findById.mockReturnThis();
+        CoworkingSpace.session = jest.fn().mockResolvedValue(space);
+        Room.find.mockReturnValue({
+            session: jest.fn().mockResolvedValue([])
+        });
+        const future = new Date(Date.now() + 86400000);
+        Reservation.find.mockReturnValue({
+            populate: jest.fn().mockReturnThis(),
+            session: jest.fn().mockResolvedValue([
+                {
+                    _id: 'r1',
+                    user: { _id: { toString: () => 'u1' }, name: 'Charlie', email: null },
+                    apptDate: future,
+                    apptEnd: future,
+                },
+            ]),
+        });
+        Reservation.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        Room.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        CoworkingSpace.deleteOne.mockResolvedValue({ deletedCount: 1 });
+
+        const req = { params: { id: '1' }, user: { role: 'admin', id: 'a1' } };
+        const res = mockRes();
+
+        await deleteCoworkingSpace(req, res);
+
+        expect(sendEmail).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('skips reservation with no user id in reduce', async () => {
+        const space = { _id: '1', name: 'Space A', owner: { toString: () => 'a1' } };
+        CoworkingSpace.findById.mockReturnThis();
+        CoworkingSpace.session = jest.fn().mockResolvedValue(space);
+        Room.find.mockReturnValue({
+            session: jest.fn().mockResolvedValue([])
+        });
+        const future = new Date(Date.now() + 86400000);
+        Reservation.find.mockReturnValue({
+            populate: jest.fn().mockReturnThis(),
+            session: jest.fn().mockResolvedValue([
+                // reservation with no user object at all — userId will be undefined
+                { _id: 'r1', user: null, apptDate: future, apptEnd: future },
+                // valid reservation for same user (exercises the acc[userId] already set path)
+                {
+                    _id: 'r2',
+                    user: { _id: { toString: () => 'u1' }, name: 'Alice', email: 'alice@test.com' },
+                    apptDate: future,
+                    apptEnd: future,
+                },
+                {
+                    _id: 'r3',
+                    user: { _id: { toString: () => 'u1' }, name: 'Alice', email: 'alice@test.com' },
+                    apptDate: future,
+                    apptEnd: future,
+                },
+            ]),
+        });
+        Reservation.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        Room.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        CoworkingSpace.deleteOne.mockResolvedValue({ deletedCount: 1 });
+        sendEmail.mockResolvedValue();
+
+        const req = { params: { id: '1' }, user: { role: 'admin', id: 'a1' } };
+        const res = mockRes();
+
+        await deleteCoworkingSpace(req, res);
+
+        // only one email sent (for u1), the null-user reservation is skipped
+        expect(sendEmail).toHaveBeenCalledTimes(1);
+        expect(res.status).toHaveBeenCalledWith(200);
     });
 });

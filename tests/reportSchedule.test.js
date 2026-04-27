@@ -40,6 +40,19 @@ describe('getTimeZoneParts', () => {
         }));
         expect(typeof parts.weekdayNumber).toBe('number');
     });
+
+    test('uses DEFAULT_REPORT_TIMEZONE when no timezone argument is supplied (line 39 default)', () => {
+        // Exercises the `timeZone = DEFAULT_REPORT_TIMEZONE` default-arg branch
+        const date = new Date('2026-04-20T08:00:00.000Z');
+        const parts = getTimeZoneParts(date);
+        // DEFAULT_REPORT_TIMEZONE is 'UTC' so UTC parts should match
+        expect(parts.year).toBe(2026);
+        expect(parts.month).toBe(4);
+        expect(parts.day).toBe(20);
+        expect(parts.hour).toBe(8);
+        expect(parts.minute).toBe(0);
+        expect(typeof parts.weekdayNumber).toBe('number');
+    });
 });
 
 describe('zonedTimeToUtc', () => {

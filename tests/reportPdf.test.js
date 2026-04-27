@@ -200,6 +200,96 @@ describe('buildOwnerReportPdf', () => {
         expect(text).toContain('AAAAAAAAAA');
     });
 
+    test('rejects with error when space data causes a runtime exception', async () => {
+        const badReport = baseReport({
+            spaces: [{
+                spaceName: null,  // causes .toUpperCase() to throw at line 74
+                address: '123 Main Street',
+                openTime: '08:00',
+                closeTime: '18:00',
+                totalBookings: 1,
+                totalUniqueUsers: 1,
+                avgBookingDurationMinutes: 60,
+                peakHours: [],
+                roomUtilization: [],
+                insights: []
+            }]
+        });
+
+        await expect(buildOwnerReportPdf(badReport)).rejects.toThrow();
+    });
+
+    test('handles null date fields with N/A fallback', async () => {
+        const buffer = await buildOwnerReportPdf({
+            owner: { name: 'Test' },
+            generatedAt: null,
+            window: { from: null, to: null },
+            totals: { totalSpaces: 0, totalBookings: 0, totalUniqueUsers: 0 },
+            spaces: []
+        });
+
+        expect(Buffer.isBuffer(buffer)).toBe(true);
+        const text = extractPdfText(buffer);
+        expect(text).toContain('N/A');
+    });
+
+    test('adds page break when content exceeds page height', async () => {
+        const manySpaces = Array.from({ length: 8 }, (_, i) => ({
+            spaceName: `Space ${i + 1}`,
+            address: `Address ${i + 1}`,
+            openTime: '08:00',
+            closeTime: '18:00',
+            totalBookings: 10,
+            totalUniqueUsers: 5,
+            avgBookingDurationMinutes: 60,
+            peakHours: [{ hour: 9, count: 5 }],
+            roomUtilization: [
+                { roomName: `Room A${i}`, roomType: 'meeting', bookingCount: 5, totalHoursBooked: 5, utilizationPercent: 50 },
+                { roomName: `Room B${i}`, roomType: 'private', bookingCount: 3, totalHoursBooked: 3, utilizationPercent: 30 },
+                { roomName: `Room C${i}`, roomType: 'open', bookingCount: 2, totalHoursBooked: 2, utilizationPercent: 20 },
+            ],
+            insights: [
+                { message: 'Insight one' },
+                { message: 'Insight two' },
+                { message: 'Insight three' },
+            ]
+        }));
+
+        const buffer = await buildOwnerReportPdf(baseReport({ spaces: manySpaces }));
+        expect(Buffer.isBuffer(buffer)).toBe(true);
+        const text = buffer.toString('binary');
+        const pageMatches = text.match(/\/Type \/Page\b/g) || [];
+        expect(pageMatches.length).toBeGreaterThan(1);
+    });
+
+    test('renders N/A fallbacks when space address, openTime and closeTime are null (lines 81, 83)', async () => {
+        const buffer = await buildOwnerReportPdf(baseReport({
+            spaces: [{
+                spaceName: 'Null Fields Hub',
+                address: null,
+                openTime: null,
+                closeTime: null,
+                totalBookings: 1,
+                totalUniqueUsers: 1,
+                avgBookingDurationMinutes: 30,
+                peakHours: [{ hour: 10, count: 1 }],
+                roomUtilization: [{
+                    roomName: 'Room A',
+                    roomType: 'private',
+                    bookingCount: 1,
+                    totalHoursBooked: 1,
+                    utilizationPercent: 5
+                }],
+                insights: []
+            }]
+        }));
+
+        expect(Buffer.isBuffer(buffer)).toBe(true);
+        const text = extractPdfText(buffer);
+        // address || "N/A", openTime || "N/A", closeTime || "N/A" all resolve to N/A
+        expect(text).toContain('N/A');
+    });
+
     test('empty input still produces a single-page report with the document header', async () => {
         const buffer = await buildOwnerReportPdf({
             owner: {},

@@ -447,6 +447,35 @@ describe('acceptRequest (US1-2)', () => {
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot accept request' });
     });
+
+    test('skips role promotion when User.findById returns null', async () => {
+        const request = makePendingRequest();
+        CoworkingSpaceRequest.findById.mockReturnValue({ populate: jest.fn().mockResolvedValue(request) });
+        CoworkingSpace.create.mockResolvedValue({ _id: 'space1' });
+        User.findById.mockResolvedValue(null);
+        sendEmail.mockResolvedValue();
+
+        const req = { params: { id: 'req1' }, user: { id: 'admin1' } };
+        const res = mockRes();
+        await acceptRequest(req, res);
+
+        expect(request.status).toBe('approved');
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('skips email when submitter has no email', async () => {
+        const request = makePendingRequest({ submitter: { _id: 'sub1', email: null, name: 'Sub' } });
+        CoworkingSpaceRequest.findById.mockReturnValue({ populate: jest.fn().mockResolvedValue(request) });
+        CoworkingSpace.create.mockResolvedValue({ _id: 'space1' });
+        User.findById.mockResolvedValue({ _id: 'sub1', role: 'user', save: jest.fn() });
+
+        const req = { params: { id: 'req1' }, user: { id: 'admin1' } };
+        const res = mockRes();
+        await acceptRequest(req, res);
+
+        expect(sendEmail).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -552,6 +581,18 @@ describe('rejectRequest (US1-2)', () => {
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot reject request' });
     });
+
+    test('skips email when submitter has no email', async () => {
+        const request = makePendingRequest({ submitter: { _id: 'sub1', email: null, name: 'Sub' } });
+        CoworkingSpaceRequest.findById.mockReturnValue({ populate: jest.fn().mockResolvedValue(request) });
+
+        const req = { params: { id: 'r1' }, body: { rejectionReason: 'Invalid' }, user: { id: 'admin1' } };
+        const res = mockRes();
+        await rejectRequest(req, res);
+
+        expect(sendEmail).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -598,6 +639,18 @@ describe('reviewRequest (US1-2)', () => {
         const res = mockRes();
         await reviewRequest(req, res);
         expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    test('returns 500 when req.body access throws unexpectedly', async () => {
+        const req = {
+            params: { id: 'r1' },
+            get body() { throw new Error('Unexpected body error'); },
+            user: { id: 'admin1' },
+        };
+        const res = mockRes();
+        await reviewRequest(req, res);
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot review request' });
     });
 });
 
@@ -679,5 +732,45 @@ describe('getAllRequests (US1-2)', () => {
         await getAllRequests(req, res);
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot fetch requests' });
+    });
+
+    test('applies select fields when req.query.select is provided', async () => {
+        const chain = makeQueryChain([{ _id: 'r1' }], 1);
+        const req = { query: { select: 'name,status' }, user: { id: 'admin1', role: 'admin' } };
+        const res = mockRes();
+        await getAllRequests(req, res);
+        expect(chain.select).toHaveBeenCalledWith('name status');
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('applies advanced filtering with gt/gte/lt/lte operators', async () => {
+        const chain = makeQueryChain([], 0);
+        const req = { query: { createdAt: { gte: '2026-01-01' } }, user: { id: 'admin1' } };
+        const res = mockRes();
+        await getAllRequests(req, res);
+        const filterArg = CoworkingSpaceRequest.find.mock.calls[0][0];
+        expect(filterArg.createdAt).toHaveProperty('$gte', '2026-01-01');
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Branch coverage: pics falsy path in submitRequest payload (line 97)
+// When pics is undefined it passes validation (pics !== undefined is false so
+// validation block is skipped) but the ternary on line 97 hits the false branch.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('submitRequest — pics falsy branch in payload (line 97)', () => {
+    test('stores empty pics array when pics is omitted from body', async () => {
+        const bodyWithoutPics = { ...VALID_BODY };
+        delete bodyWithoutPics.pics;
+        const created = { _id: 'req1', ...bodyWithoutPics, pics: [] };
+        CoworkingSpaceRequest.create.mockResolvedValue(created);
+        const req = { body: bodyWithoutPics, user: { id: 'u1', email: null, name: 'User' } };
+        const res = mockRes();
+        await submitRequest(req, res);
+        expect(res.status).toHaveBeenCalledWith(201);
+        // The payload passed to create must have pics: []
+        const createArg = CoworkingSpaceRequest.create.mock.calls[0][0];
+        expect(createArg.pics).toEqual([]);
     });
 });

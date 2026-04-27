@@ -168,3 +168,27 @@ describe('logout', () => {
         expect(res.json).toHaveBeenCalledWith({ success: true, data: {} });
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sendTokenResponse — production secure flag (line 90)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('sendTokenResponse — production mode', () => {
+    test('sets secure:true on cookie options when NODE_ENV is production', async () => {
+        const originalEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+
+        try {
+            const fakeUser = { getSignedJwtToken: jest.fn().mockReturnValue('tok-prod') };
+            User.create.mockResolvedValue(fakeUser);
+
+            const req = { body: { name: 'Alice', email: 'alice@test.com', password: 'pass', role: 'user' } };
+            const res = mockRes();
+            await register(req, res);
+
+            const cookieOptions = res.cookie.mock.calls[0][2];
+            expect(cookieOptions.secure).toBe(true);
+        } finally {
+            process.env.NODE_ENV = originalEnv;
+        }
+    });
+});

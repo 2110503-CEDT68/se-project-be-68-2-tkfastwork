@@ -64,4 +64,30 @@ describe('User Model Test', () => {
         expect(bcrypt.compare).toHaveBeenCalledWith('correctPassword', 'hashedPassword');
         expect(isMatch).toBe(true);
     });
+
+    it('should skip hashing when password is not modified', async () => {
+        const user = new User({
+            name: 'Test',
+            tel: '0123456789',
+            email: 'test@test.com',
+            password: 'alreadyHashed'
+        });
+
+        const hooks = User.schema.s.hooks._pres;
+        const saveHooks = (typeof hooks.get === 'function' ? hooks.get('save') : hooks['save']) || [];
+        const targetHook = saveHooks.find(h => typeof h.fn === 'function' && h.fn.toString().includes('genSalt'));
+
+        if (!targetHook) {
+            throw new Error('Pre-save hook not found');
+        }
+
+        // Simulate isModified returning false (password not changed)
+        user.isModified = jest.fn().mockReturnValue(false);
+
+        const nextFn = jest.fn();
+        await targetHook.fn.call(user, nextFn);
+
+        expect(bcrypt.genSalt).not.toHaveBeenCalled();
+        expect(bcrypt.hash).not.toHaveBeenCalled();
+    });
 });

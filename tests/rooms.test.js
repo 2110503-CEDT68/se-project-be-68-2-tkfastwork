@@ -74,6 +74,15 @@ describe('getRooms', () => {
         expect(filterArg.coworkingSpace).toBe('space1');
     });
 
+    test('applies advanced filtering with gt/gte/lt/lte operators', async () => {
+        const chain = makeRoomChain([], 0);
+        const req = { query: { capacity: { gte: '5' } }, params: {} };
+        const res = mockRes();
+        await getRooms(req, res);
+        const filterArg = Room.find.mock.calls[0][0];
+        expect(filterArg.capacity).toHaveProperty('$gte', '5');
+    });
+
     test('applies custom sort when provided', async () => {
         const chain = makeRoomChain([], 0);
         const req = { query: { sort: 'name' }, params: {} };
@@ -122,6 +131,15 @@ describe('getRooms', () => {
         await getRooms(req, res);
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot list rooms' });
+    });
+
+    test('applies select fields when req.query.select is provided', async () => {
+        const chain = makeRoomChain([{ _id: 'r1', name: 'Room A' }], 1);
+        const req = { query: { select: 'name,capacity' }, params: {} };
+        const res = mockRes();
+        await getRooms(req, res);
+        expect(chain.select).toHaveBeenCalledWith('name capacity');
+        expect(res.status).toHaveBeenCalledWith(200);
     });
 });
 
@@ -483,5 +501,29 @@ describe('deleteRoom (US1-6)', () => {
 
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot delete Room' });
+    });
+
+    test('uses empty string for spaceName when room.coworkingSpace is null (line 174)', async () => {
+        // Exercises the falsy branch of: room.coworkingSpace ? room.coworkingSpace.name : ''
+        const room = {
+            _id: 'r1',
+            name: 'Room A',
+            coworkingSpace: null,
+        };
+        mockRoomFindChain(room);
+        mockReservationFindChain([
+            { _id: 'res1', apptDate: new Date(), apptEnd: new Date(), user: { name: 'Alice', email: 'alice@test.com' } },
+        ]);
+        Reservation.deleteMany.mockResolvedValue({ deletedCount: 1 });
+        Room.deleteOne.mockResolvedValue({ deletedCount: 1 });
+        sendEmail.mockResolvedValue();
+
+        const req = { params: { id: 'r1' }, user: { id: 'admin1', role: 'admin' } };
+        const res = mockRes();
+        await deleteRoom(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        // Email should still be sent — spaceName just resolves to ''
+        expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'alice@test.com' }));
     });
 });

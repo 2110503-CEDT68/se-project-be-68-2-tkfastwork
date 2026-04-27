@@ -185,6 +185,25 @@ describe('PUT /reports/preferences', () => {
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     });
+
+    test('uses empty object fallback when owner.reportPreferences is null', async () => {
+        const owner = {
+            reportPreferences: null,
+            markModified: jest.fn(),
+            save: jest.fn().mockResolvedValue(true)
+        };
+        User.findById.mockResolvedValue(owner);
+
+        const req = {
+            user: { id: 'owner-1' },
+            body: { enabled: false }
+        };
+        const res = mockRes();
+        await updateMyReportPreferences(req, res);
+
+        expect(owner.reportPreferences.enabled).toBe(false);
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
 });
 
 describe('GET /reports/pdf', () => {
@@ -357,5 +376,47 @@ describe('POST /reports/send-now', () => {
 
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'email broken' });
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Branch coverage: owner.reportPreferences || {} falsy branch (lines 41, 97)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('GET /reports/preferences — reportPreferences null branch (line 41)', () => {
+    test('handles owner with null reportPreferences without throwing', async () => {
+        User.findById.mockResolvedValue({ reportPreferences: null });
+
+        const res = mockRes();
+        await getMyReportPreferences({ user: { id: 'owner-1' } }, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                enabled: false,
+                lastRunAt: null,
+                nextRunAt: null
+            })
+        }));
+    });
+});
+
+describe('POST /reports/send-now — reportPreferences null branch (line 97)', () => {
+    test('handles owner with null reportPreferences without throwing', async () => {
+        const owner = {
+            _id: 'owner-1',
+            email: 'owner@test.com',
+            reportPreferences: null,
+            markModified: jest.fn(),
+            save: jest.fn().mockResolvedValue(true)
+        };
+        User.findById.mockResolvedValue(owner);
+        sendOwnerReportEmail.mockResolvedValue({ filename: 'owner-report.pdf' });
+
+        const res = mockRes();
+        await sendMyReportNow({ user: { id: 'owner-1' }, body: {} }, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        // preferences.enabled is false (default), so save is not called
+        expect(owner.save).not.toHaveBeenCalled();
     });
 });

@@ -130,4 +130,20 @@ describe('getInsights', () => {
         expect(res.status).toHaveBeenCalledWith(403);
         expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Not authorized - owner only' });
     });
+
+    test('returns 500 when getSpaceReportData throws', async () => {
+        CoworkingSpace.findById.mockResolvedValue({
+            _id: 'space1',
+            owner: { toString: () => 'user1' }
+        });
+        parseDateRange.mockReturnValue({ from: new Date(), to: new Date() });
+        getSpaceReportData.mockRejectedValue(new Error('Report generation failed'));
+
+        const req = { params: { id: 'space1' }, query: {}, user: { id: 'user1' } };
+        const res = mockRes();
+        await getInsights(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Cannot generate insights' });
+    });
 });
