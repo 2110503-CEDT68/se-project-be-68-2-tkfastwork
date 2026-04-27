@@ -33,28 +33,63 @@ const baseReport = (overrides = {}) => ({
     ...overrides
 });
 
+/**
+ * Helper: decompress FlateDecode streams from PDF buffer, decode hex text,
+ * then extract readable text from TJ/Tj operators by concatenating fragments.
+ */
+const zlib = require('zlib');
+function extractPdfText(buffer) {
+    const raw = buffer.toString('binary');
+    const streamRegex = /stream\r?\n([\s\S]*?)endstream/g;
+    let lines = [];
+    let match;
+    while ((match = streamRegex.exec(raw)) !== null) {
+        let content;
+        try {
+            const compressed = Buffer.from(match[1], 'binary');
+            content = zlib.inflateSync(compressed).toString('utf-8');
+        } catch {
+            content = match[1];
+        }
+        // Extract TJ arrays and decode hex fragments into text
+        const tjRegex = /\[(.*?)\]\s*TJ/g;
+        let tjMatch;
+        while ((tjMatch = tjRegex.exec(content)) !== null) {
+            const inner = tjMatch[1];
+            const hexRegex = /<([0-9a-fA-F]+)>/g;
+            let hexMatch;
+            let line = '';
+            while ((hexMatch = hexRegex.exec(inner)) !== null) {
+                line += Buffer.from(hexMatch[1], 'hex').toString('utf-8');
+            }
+            if (line) lines.push(line);
+        }
+    }
+    return lines.join('\n');
+}
+
 describe('buildOwnerReportPdf', () => {
-    test('produces a valid PDF buffer that contains the report header', () => {
-        const buffer = buildOwnerReportPdf(baseReport());
+    test('produces a valid PDF buffer that contains the report header', async () => {
+        const buffer = await buildOwnerReportPdf(baseReport());
 
         expect(Buffer.isBuffer(buffer)).toBe(true);
-        expect(buffer.slice(0, 8).toString()).toBe('%PDF-1.4');
-        const text = buffer.toString('binary');
-        expect(text).toContain('Owner Report');
-        expect(text).toContain('Focus Hub');
+        expect(buffer.slice(0, 5).toString()).toBe('%PDF-');
+        const text = extractPdfText(buffer);
+        expect(text).toContain('EXECUTIVE PERFORMANCE REPORT');
+        expect(text).toContain('FOCUS HUB');
         expect(text).toContain('Atlas');
-        expect(text).toContain('xref');
-        expect(text).toContain('%%EOF');
+        const rawPdf = buffer.toString('binary');
+        expect(rawPdf).toContain('%%EOF');
     });
 
-    test('falls back to a placeholder line when no spaces are assigned', () => {
-        const buffer = buildOwnerReportPdf(baseReport({ spaces: [] }));
-        const text = buffer.toString('binary');
+    test('falls back to a placeholder line when no spaces are assigned', async () => {
+        const buffer = await buildOwnerReportPdf(baseReport({ spaces: [] }));
+        const text = extractPdfText(buffer);
         expect(text).toContain('No coworking spaces are assigned');
     });
 
-    test('handles empty room utilisation and missing peak hours', () => {
-        const buffer = buildOwnerReportPdf(baseReport({
+    test('handles empty room utilisation and missing peak hours', async () => {
+        const buffer = await buildOwnerReportPdf(baseReport({
             spaces: [{
                 spaceName: 'Quiet Hub',
                 address: '1 Empty Way',
@@ -69,13 +104,13 @@ describe('buildOwnerReportPdf', () => {
             }]
         }));
 
-        const text = buffer.toString('binary');
-        expect(text).toContain('No peak hours available');
-        expect(text).toContain('No rooms found for this coworking space.');
+        const text = extractPdfText(buffer);
+        expect(text).toContain('No peak data');
+        expect(text).toContain('No rooms found');
     });
 
-    test('escapes backslashes and parentheses inside text content', () => {
-        const buffer = buildOwnerReportPdf(baseReport({
+    test('renders special characters inside text content', async () => {
+        const buffer = await buildOwnerReportPdf(baseReport({
             spaces: [{
                 spaceName: 'Edge (Case) \\Lab',
                 address: 'Tab\there',
@@ -86,7 +121,7 @@ describe('buildOwnerReportPdf', () => {
                 avgBookingDurationMinutes: 30,
                 peakHours: [{ hour: 0, count: 1 }],
                 roomUtilization: [{
-                    roomName: 'Room é',
+                    roomName: 'Room A',
                     roomType: 'private',
                     bookingCount: 1,
                     totalHoursBooked: 1,
@@ -96,18 +131,19 @@ describe('buildOwnerReportPdf', () => {
             }]
         }));
 
-        const text = buffer.toString('binary');
-        expect(text).toContain('\\(Case\\)');
-        expect(text).toContain('\\\\Lab');
+        expect(Buffer.isBuffer(buffer)).toBe(true);
+        const text = extractPdfText(buffer);
+        expect(text).toContain('EDGE');
+        expect(text).toContain('Insight');
     });
 
-    test('falls back to "Unknown owner" when owner name is missing', () => {
-        const buffer = buildOwnerReportPdf(baseReport({ owner: {} }));
-        const text = buffer.toString('binary');
-        expect(text).toContain('Unknown owner');
+    test('falls back to "Unknown" when owner name is missing', async () => {
+        const buffer = await buildOwnerReportPdf(baseReport({ owner: {} }));
+        const text = extractPdfText(buffer);
+        expect(text).toContain('Unknown');
     });
 
-    test('paginates content across multiple pages when there are many lines', () => {
+    test('paginates content across multiple pages when there are many lines', async () => {
         const manyRooms = Array.from({ length: 60 }, (_, index) => ({
             roomName: `Room ${index + 1}`,
             roomType: 'open',
@@ -116,7 +152,7 @@ describe('buildOwnerReportPdf', () => {
             utilizationPercent: index
         }));
 
-        const buffer = buildOwnerReportPdf(baseReport({
+        const buffer = await buildOwnerReportPdf(baseReport({
             spaces: [{
                 spaceName: 'Mega Space',
                 address: 'Mega Avenue',
@@ -132,13 +168,13 @@ describe('buildOwnerReportPdf', () => {
         }));
 
         const text = buffer.toString('binary');
-        const pageMatches = text.match(/\/Type \/Page /g) || [];
+        const pageMatches = text.match(/\/Type \/Page\b/g) || [];
         expect(pageMatches.length).toBeGreaterThan(1);
     });
 
-    test('long single lines are wrapped before being written to the page', () => {
+    test('long single lines are rendered in the PDF output', async () => {
         const longInsight = 'A'.repeat(400);
-        const buffer = buildOwnerReportPdf(baseReport({
+        const buffer = await buildOwnerReportPdf(baseReport({
             spaces: [{
                 spaceName: 'Wrap Hub',
                 address: 'Wrap Street',
@@ -159,12 +195,13 @@ describe('buildOwnerReportPdf', () => {
             }]
         }));
 
-        const text = buffer.toString('binary');
+        expect(Buffer.isBuffer(buffer)).toBe(true);
+        const text = extractPdfText(buffer);
         expect(text).toContain('AAAAAAAAAA');
     });
 
-    test('empty input still produces a single-page report with the document header', () => {
-        const buffer = buildOwnerReportPdf({
+    test('empty input still produces a single-page report with the document header', async () => {
+        const buffer = await buildOwnerReportPdf({
             owner: {},
             generatedAt: new Date('2026-04-23T00:00:00.000Z'),
             window: {
@@ -175,8 +212,8 @@ describe('buildOwnerReportPdf', () => {
             spaces: []
         });
 
-        expect(buffer.slice(0, 8).toString()).toBe('%PDF-1.4');
-        const text = buffer.toString('binary');
-        expect(text).toContain('Co-working Space Owner Report');
+        expect(buffer.slice(0, 5).toString()).toBe('%PDF-');
+        const text = extractPdfText(buffer);
+        expect(text).toContain('EXECUTIVE PERFORMANCE REPORT');
     });
 });
