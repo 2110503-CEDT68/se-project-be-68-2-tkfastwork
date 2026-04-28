@@ -105,8 +105,10 @@ describe('buildOwnerReportPdf', () => {
         }));
 
         const text = extractPdfText(buffer);
-        expect(text).toContain('No peak data');
-        expect(text).toContain('No rooms found');
+        // New PDF skips chart/table sections when data is empty
+        expect(text).toContain('QUIET HUB');
+        expect(text).not.toContain('Booking Activity');
+        expect(text).not.toContain('Room Utilization');
     });
 
     test('renders special characters inside text content', async () => {

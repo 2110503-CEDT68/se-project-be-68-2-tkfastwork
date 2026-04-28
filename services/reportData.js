@@ -116,11 +116,12 @@ const buildInsights = ({ space, reservations, roomUtilization, byOccupation, pea
         });
     });
 
-    if (peakHours.length > 0) {
+    const busiestHour = [...peakHours].sort((left, right) => right.count - left.count)[0];
+    if (busiestHour && busiestHour.count > 0) {
         insights.push({
             type: 'time_pattern',
             severity: 'info',
-            message: `The busiest booking hour was ${String(peakHours[0].hour).padStart(2, '0')}:00 with ${peakHours[0].count} bookings.`
+            message: `The busiest booking hour was ${String(busiestHour.hour).padStart(2, '0')}:00 with ${busiestHour.count} bookings.`
         });
     }
 
@@ -209,10 +210,10 @@ const getSpaceReportData = async ({ space, spaceId, from, to, referenceDate = ne
         weekdayCounts[weekday] = (weekdayCounts[weekday] || 0) + 1;
     });
 
-    const peakHours = Object.entries(hourCounts)
-        .map(([hour, count]) => ({ hour: Number.parseInt(hour, 10), count }))
-        .sort((left, right) => right.count - left.count)
-        .slice(0, 5);
+    const peakHours = Array.from({ length: 24 }, (_, hour) => ({
+        hour,
+        count: hourCounts[hour] || 0,
+    }));
 
     const uniqueUserList = Array.from(uniqueUsers.values());
     const genderMap = {};
