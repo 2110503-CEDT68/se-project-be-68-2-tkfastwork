@@ -52,20 +52,33 @@ async function run() {
     // 1. Seed Users
     console.log('Step 1: Preparing test data...');
     
+    const mongoose = require('mongoose');
+    const dotenv = require('dotenv');
+    dotenv.config({ path: path.join(__dirname, '../config/config.env') });
+    
+    // Connect to DB directly to seed the admin user, since the API prevents creating admins
+    await mongoose.connect(process.env.MONGO_URI);
+    const User = require('../models/User');
+
     const users = [
-        { name: 'Newman User', email: 'user@newman-test.com', password: 'password123', tel: '0811111111', role: 'user' },
-        { name: 'Admin User', email: 'admin@newman-test.com', password: 'admin123', tel: '0822222222', role: 'admin' }
+        { name: 'Newman User', email: 'user@newman-test.com', password: 'password123', tel: '0811111111', role: 'user', dateOfBirth: '1990-01-01', occupation: 'Tester', gender: 'other', revenue: 0 },
+        { name: 'Admin User', email: 'admin@newman-test.com', password: 'admin123', tel: '0822222222', role: 'admin', dateOfBirth: '1980-01-01', occupation: 'Admin', gender: 'other', revenue: 0 }
     ];
 
-    for (const user of users) {
-        process.stdout.write(`  Registering ${user.role}: ${user.email} ... `);
-        const res = await apiRequest('/auth/register', 'POST', user);
-        if (res.status === 200 || res.status === 201) {
-            console.log('OK');
-        } else if (res.status === 400) {
-            console.log('Already exists');
-        } else {
-            console.log(`Failed (Status ${res.status})`);
+    for (const userData of users) {
+        process.stdout.write(`  Registering ${userData.role}: ${userData.email} ... `);
+        try {
+            const existing = await User.findOne({ email: userData.email });
+            if (existing) {
+                Object.assign(existing, userData);
+                await existing.save();
+                console.log('Already exists (Updated)');
+            } else {
+                await User.create(userData);
+                console.log('OK');
+            }
+        } catch (err) {
+            console.log(`Failed: ${err.message}`);
         }
     }
 

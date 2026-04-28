@@ -70,7 +70,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"name\":\"Newman User\",\"tel\":\"0812345678\",\"email\":\"user@newman-test.com\",\"password\":\"password123\"}"
+              "raw": "{\"name\":\"Newman User\",\"tel\":\"0812345678\",\"email\":\"user@newman-test.com\",\"password\":\"password123\",\"dateOfBirth\":\"1990-01-01\",\"occupation\":\"Tester\",\"gender\":\"other\",\"revenue\":0}"
             }
           }
         },
@@ -97,7 +97,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"name\":\"Admin User\",\"tel\":\"0898765432\",\"email\":\"admin@newman-test.com\",\"password\":\"admin123\",\"role\":\"admin\"}"
+              "raw": "{\"name\":\"Admin User\",\"tel\":\"0898765432\",\"email\":\"admin@newman-test.com\",\"password\":\"admin123\",\"role\":\"admin\",\"dateOfBirth\":\"1980-01-01\",\"occupation\":\"Admin\",\"gender\":\"other\",\"revenue\":0}"
             }
           }
         },
@@ -499,7 +499,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"name\":\"Meeting Room A\",\"capacity\":10,\"description\":\"A nice room\"}"
+              "raw": "{\"name\":\"Meeting Room A\",\"capacity\":10,\"description\":\"A nice room\",\"roomType\":\"meeting\"}"
             }
           }
         },
@@ -532,29 +532,6 @@
               "mode": "raw",
               "raw": "{\"capacity\":15}"
             }
-          }
-        },
-        {
-          "name": "Delete Room",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "DELETE",
-            "url": "{{baseUrl}}/rooms/{{roomId}}",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{adminToken}}"
-              }
-            ]
           }
         }
       ]
@@ -640,7 +617,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"apptDate\":\"{{apptDate}}\"}"
+              "raw": "{\"apptDate\":\"{{apptDate}}\",\"room\":\"{{roomId}}\"}"
             }
           }
         },
@@ -832,6 +809,29 @@
     {
       "name": "6. Cleanup",
       "item": [
+        {
+          "name": "Delete Room",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/rooms/{{roomId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ]
+          }
+        },
         {
           "name": "Delete Space (Admin)",
           "event": [
